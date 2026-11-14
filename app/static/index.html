@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Campus GPU Fabric - 可回收、可解释的校园 GPU 算力互助平台">
+  <title>Aurora · Campus GPU Fabric</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#overview" aria-label="Aurora 首页">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span><b>AURORA</b><small>GPU FABRIC</small></span>
+      </a>
+      <nav id="nav" aria-label="主导航">
+        <button class="nav-item active" data-route="overview"><span class="nav-icon">⌁</span><span>资源总览</span></button>
+        <button class="nav-item" data-route="submit"><span class="nav-icon">＋</span><span>智能提交</span></button>
+        <button class="nav-item" data-route="tasks"><span class="nav-icon">◫</span><span>我的任务</span></button>
+        <button class="nav-item" data-route="approvals"><span class="nav-icon">✓</span><span>私有卡审批</span><em id="approvalCount">0</em></button>
+        <button class="nav-item" data-route="mount"><span class="nav-icon">⛓</span><span>服务器挂载</span></button>
+        <button class="nav-item" data-route="lab"><span class="nav-icon">⌬</span><span>实验室画像</span></button>
+        <button class="nav-item" data-route="timeline"><span class="nav-icon">≋</span><span>状态时间线</span></button>
+      </nav>
+      <div class="sidebar-note">
+        <span class="pulse"></span>
+        <div><b>控制面正常</b><small>账本不变量已通过</small></div>
+      </div>
+      <div class="user-card">
+        <span class="avatar">林</span>
+        <div><b>林同学</b><small id="roleLabel">普通用户</small></div>
+        <button class="icon-btn" title="切换身份" id="roleSwitch">↕</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="pageEyebrow">资源控制面 / 实时</p>
+          <h1 id="pageTitle">全局资源态势</h1>
+        </div>
+        <div class="top-actions">
+          <span class="logic-clock"><i></i><span>逻辑时钟</span><b id="logicalTime">--:--:--</b></span>
+          <button class="button ghost" id="advanceClock">+ 5 分钟</button>
+          <button class="button primary route-link" data-route="submit">提交任务</button>
+        </div>
+      </header>
+
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+      <section class="page active" data-page="overview">
+        <div class="hero-grid">
+          <article class="health-panel dark-panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow lime">FABRIC PULSE</p><h2>资源池正在呼吸</h2></div>
+              <span class="live-pill"><i></i> LIVE</span>
+            </div>
+            <div class="orbit-visual" aria-hidden="true">
+              <div class="orbit o1"><i></i><i></i><i></i></div>
+              <div class="orbit o2"><i></i><i></i></div>
+              <div class="orbit-core"><strong id="heroFree">--</strong><span>GPU 可立即使用</span></div>
+            </div>
+            <div class="pulse-stats">
+              <span><b id="heroTotal">--</b><small>总 GPU</small></span>
+              <span><b id="heroPrivate">--</b><small>私有贡献</small></span>
+              <span><b id="heroHealth">--</b><small>节点在线</small></span>
+            </div>
+          </article>
+
+          <div class="metric-grid">
+            <article class="metric-card accent-cyan"><div class="metric-top"><span>GPU 利用率</span><em>实时</em></div><strong id="metricUtil">--%</strong><div class="mini-bars" id="utilBars"></div><p>较昨日同时段 <b>+8.4%</b></p></article>
+            <article class="metric-card"><div class="metric-top"><span>运行中任务</span><em class="cyan-dot">●</em></div><strong id="metricRunning">--</strong><p>其中 <b id="metricCheckpoint">0</b> 个支持检查点</p><a class="route-link" data-route="tasks">查看任务 →</a></article>
+            <article class="metric-card accent-yellow"><div class="metric-top"><span>等待我审批</span><em>需处理</em></div><strong id="metricApprovals">--</strong><p>最早等待 <b>6 分钟</b></p><a class="route-link" data-route="approvals">立即审批 →</a></article>
+            <article class="metric-card"><div class="metric-top"><span>即将到期</span><em>30 min</em></div><strong id="metricExpiring">--</strong><p>租约到期将自动归还</p><a class="route-link" data-route="tasks">查看租约 →</a></article>
+          </div>
+        </div>
+
+        <div class="section-heading"><div><p class="eyebrow">CAPACITY MAP</p><h2>算力中心</h2></div><div class="legend"><span><i class="public"></i>公共中心</span><span><i class="private"></i>私有挂载</span><span><i class="busy"></i>使用中</span></div></div>
+        <div class="resource-layout">
+          <div class="resource-list" id="resourceList"></div>
+          <aside class="activity-card">
+            <div class="panel-heading"><div><p class="eyebrow">LATEST EVENTS</p><h3>此刻发生</h3></div><button class="text-btn route-link" data-route="timeline">全部</button></div>
+            <div class="event-list" id="eventPreview"></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="page" data-page="submit">
+        <div class="split-page submit-layout">
+          <div>
+            <article class="content-card form-card">
+              <div class="step-row"><span class="active">01 任务意图</span><i></i><span>02 资源约束</span><i></i><span>03 AI 匹配</span></div>
+              <div class="section-heading compact"><div><p class="eyebrow">SMART SUBMIT</p><h2>说清任务，其余交给策略</h2><p class="subcopy">系统会同时评估显存适配、回收风险、实验室 DDL 周期与审批速度。</p></div></div>
+              <form id="taskForm">
+                <div class="field full"><label for="taskName">任务名称</label><input id="taskName" name="task_name" value="多模态检索消融实验" required></div>
+                <div class="field"><label for="requesterType">提交身份</label><select id="requesterType" name="requester_type"><option value="student">普通用户</option><option value="lab">实验室用户</option></select></div>
+                <div class="field"><label for="taskType">任务类型</label><select id="taskType" name="task_type"><option value="training">模型训练</option><option value="inference">批量推理</option><option value="interactive">交互实验</option><option value="batch">通用批任务</option></select></div>
+                <div class="field"><label for="gpuModel">期望 GPU</label><select id="gpuModel" name="gpu_model"><option>any</option><option>A100</option><option>H100</option><option>RTX 4090</option><option>RTX 3090</option></select></div>
+                <div class="field"><label for="gpuCount">GPU 数量</label><input id="gpuCount" name="gpu_count" type="number" min="1" max="8" value="1"></div>
+                <div class="field"><label for="memoryMib">最低显存</label><select id="memoryMib" name="memory_mib"><option value="12000">12 GB</option><option value="20000" selected>20 GB</option><option value="40000">40 GB</option><option value="80000">80 GB</option></select></div>
+                <div class="field"><label for="ttlSeconds">预计使用</label><select id="ttlSeconds" name="ttl_seconds"><option value="900">15 分钟</option><option value="1800" selected>30 分钟</option><option value="3600">1 小时</option></select></div>
+                <div class="field full"><label for="deadline">截止时间</label><input id="deadline" name="deadline" type="datetime-local"></div>
+                <label class="toggle-row full"><span><b>支持 Checkpoint</b><small>被贡献者收回时自动保存并寻找替代卡</small></span><input id="checkpointable" type="checkbox" checked><i></i></label>
+                <div class="form-actions full"><button type="button" class="button ghost" id="estimateBtn">只做预估</button><button class="button primary" type="submit">AI 匹配并提交 →</button></div>
+              </form>
+            </article>
+          </div>
+          <aside class="strategy-panel dark-panel">
+            <p class="eyebrow lime">PLACEMENT BRAIN</p><h2>匹配策略画像</h2>
+            <div class="brain-lines"><span style="--p:84%"><b>显存适配</b><i></i><em>84</em></span><span style="--p:92%"><b>稳定性</b><i></i><em>92</em></span><span style="--p:68%"><b>成本收益</b><i></i><em>68</em></span><span style="--p:76%"><b>DDL 风险</b><i></i><em>76</em></span></div>
+            <div class="strategy-note"><span>AI</span><p>临近截止时间时，策略会提高低回收风险节点的权重；私有卡命中后先进入实验室审批，不会提前占卡。</p></div>
+            <div id="ranking" class="ranking-list"><div class="empty-state">提交后在此解释每张候选卡为什么被选择。</div></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="page" data-page="tasks">
+        <div class="section-heading"><div><p class="eyebrow">MY WORKLOADS</p><h2>任务与租约</h2><p class="subcopy">每个状态都附带原因；资源到期、故障或回收后不会留下幽灵占用。</p></div><div class="segmented"><button class="active">全部</button><button>运行中</button><button>等待中</button><button>已结束</button></div></div>
+        <div class="task-grid" id="taskGrid"></div>
+      </section>
+
+      <section class="page" data-page="approvals">
+        <div class="section-heading"><div><p class="eyebrow">PRIVATE GPU GATE</p><h2>私有卡审批台</h2><p class="subcopy">贡献者始终拥有最后决定权。批准后才会原子扣减资源账本。</p></div><span class="sla-pill">平均审批 8 min</span></div>
+        <div class="approval-layout"><div id="approvalList" class="approval-list"></div><aside class="profile-card" id="approvalProfile"><div class="empty-state">选择一条申请，查看任务与实验室画像。</div></aside></div>
+      </section>
+
+      <section class="page" data-page="mount">
+        <div class="split-page mount-layout">
+          <article class="content-card form-card">
+            <p class="eyebrow">CONTRIBUTE CAPACITY</p><h2>挂载一台私有服务器</h2><p class="subcopy">Agent 只上报资源和心跳；贡献者可随时发起收回，平台负责通知、检查点和账本清理。</p>
+            <form id="mountForm">
+              <div class="field"><label>所属实验室</label><select name="lab_id"><option value="lab-vision">视觉智能实验室</option><option value="lab-nlp">自然语言处理实验室</option><option value="lab-robot">机器人实验室</option></select></div>
+              <div class="field"><label>主机名</label><input name="hostname" value="vision-rtx-a02" required></div>
+              <div class="field"><label>GPU 型号</label><select name="gpu_model"><option>RTX 4090</option><option>A100</option><option>H100</option><option>RTX 3090</option></select></div>
+              <div class="field"><label>GPU 数量</label><input name="gpu_count" type="number" min="1" max="16" value="2"></div>
+              <div class="field"><label>单卡显存 MiB</label><input name="memory_mib" type="number" value="24564"></div>
+              <div class="field"><label>收回通知期</label><select name="reclaim_notice_seconds"><option value="30">30 秒</option><option value="60" selected>60 秒</option><option value="120">120 秒</option></select></div>
+              <div class="field full"><label>可共享时段</label><input name="available_window" value="工作日 19:00 - 次日 08:00"></div>
+              <div class="form-actions full"><button class="button primary" type="submit">开始安全验证 →</button></div>
+            </form>
+          </article>
+          <aside class="mount-steps dark-panel">
+            <p class="eyebrow lime">ZERO-TRUST ONBOARDING</p><h2>四步接入，不交出机器</h2>
+            <ol><li class="done"><span>01</span><div><b>安装轻量 Agent</b><small>生成一次性连接令牌</small></div></li><li><span>02</span><div><b>硬件与拓扑自检</b><small>型号、显存、MIG profile</small></div></li><li><span>03</span><div><b>网络与 Checkpoint 基线</b><small>只声明被实际验证的数据</small></div></li><li><span>04</span><div><b>确认贡献策略</b><small>时段、通知期、收益规则</small></div></li></ol>
+            <div class="reclaim-box"><b>随时可收回</b><p>点击“收回”后，运行任务先进入通知期。到点无论 Checkpoint 成功与否都会归还 GPU。</p></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="page" data-page="lab">
+        <div class="section-heading"><div><p class="eyebrow">LAB INTELLIGENCE</p><h2>贡献收益与使用画像</h2><p class="subcopy">不是给实验室贴标签，而是让资源匹配理解“什么时候最忙、什么任务更合适”。</p></div><select class="header-select" id="labSelect"><option value="lab-nlp">自然语言处理实验室</option><option value="lab-vision">视觉智能实验室</option><option value="lab-robot">机器人实验室</option></select></div>
+        <div class="lab-hero dark-panel"><div><p class="eyebrow lime">CONTRIBUTION RETURN</p><h2 id="labName">自然语言处理实验室</h2><p>本月贡献帮助 31 个任务减少排队，平台会在本实验室 DDL 周期自动提升保留容量。</p></div><div class="earnings"><span><small>可用贡献积分</small><strong id="labCredits">26,780</strong></span><span><small>累计贡献时长</small><strong id="labHours">2,116 h</strong></span><span><small>本月预估收益</small><strong>+ 3,420</strong></span></div></div>
+        <div class="lab-grid"><article class="content-card"><div class="panel-heading"><div><p class="eyebrow">USAGE RHYTHM</p><h3>DDL 使用节律</h3></div><span class="tag">AI 画像</span></div><div class="calendar-heat" id="heatmap"></div><p class="insight" id="labPeak">ACL / EMNLP 前 45 天出现高峰，建议提前预留 2×A100。</p></article><article class="content-card"><div class="panel-heading"><div><p class="eyebrow">CONTRIBUTION</p><h3>近 7 日贡献</h3></div></div><div class="contrib-chart" id="contribChart"></div><div class="chart-labels"><span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span></div></article><article class="content-card lab-policy"><p class="eyebrow">POLICY</p><h3>本实验室资源偏好</h3><dl><div><dt>平均审批</dt><dd id="labSla">8 min</dd></div><div><dt>回收风险</dt><dd id="labRisk">高</dd></div><div><dt>适配任务</dt><dd>LLM / NLP</dd></div><div><dt>优先保护</dt><dd>临近 DDL 的本组任务</dd></div></dl></article></div>
+      </section>
+
+      <section class="page" data-page="timeline">
+        <div class="section-heading"><div><p class="eyebrow">EXPLAINABLE STATE</p><h2>状态时间线</h2><p class="subcopy">回答“我的任务在哪里、为什么停了、资源什么时候归还”。</p></div><button class="button ghost" id="refreshEvents">刷新事件</button></div>
+        <div class="timeline-layout"><div class="timeline" id="timelineList"></div><aside class="invariant-card dark-panel"><p class="eyebrow lime">LEDGER INVARIANTS</p><h2>账本守卫</h2><ul><li><i>✓</i><span><b>无 GPU 超卖</b><small>每张卡最多一个活跃 allocation</small></span></li><li><i>✓</i><span><b>幂等请求去重</b><small>同 Owner + Key 返回同一分配</small></span></li><li><i>✓</i><span><b>终态不占资源</b><small>Expired / Evicted / Released 已归还</small></span></li><li><i>✓</i><span><b>审批前不扣账</b><small>私有卡批准后才原子放置</small></span></li></ul></aside></div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
