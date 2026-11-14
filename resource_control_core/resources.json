@@ -1,0 +1,31 @@
+{
+  "nodes": [
+    {
+      "node_id": "central-01", "owner": "campus", "state": "Ready",
+      "cpu_millicores": 64000, "memory_mib": 262144, "ephemeral_storage_mib": 512000,
+      "contributed": false, "labels": {"zone": "campus-core", "tier": "public"},
+      "gpus": [
+        {"gpu_id": "central-01-gpu-0", "model": "H100", "memory_mib": 81559, "profile": null},
+        {"gpu_id": "central-01-gpu-1", "model": "H100", "memory_mib": 81559, "profile": "mig-3g.40gb"}
+      ]
+    },
+    {
+      "node_id": "vision-01", "owner": "lab-vision", "state": "Ready",
+      "cpu_millicores": 48000, "memory_mib": 131072, "ephemeral_storage_mib": 256000,
+      "contributed": true, "labels": {"zone": "campus-lab", "lab": "vision"},
+      "gpus": [
+        {"gpu_id": "vision-01-gpu-0", "model": "RTX 4090", "memory_mib": 24564, "profile": null},
+        {"gpu_id": "vision-01-gpu-1", "model": "RTX 4090", "memory_mib": 24564, "profile": null}
+      ]
+    },
+    {
+      "node_id": "nlp-01", "owner": "lab-nlp", "state": "Ready",
+      "cpu_millicores": 56000, "memory_mib": 196608, "ephemeral_storage_mib": 384000,
+      "contributed": true, "labels": {"zone": "campus-lab", "lab": "nlp"},
+      "gpus": [
+        {"gpu_id": "nlp-01-gpu-0", "model": "A100", "memory_mib": 40960, "profile": null},
+        {"gpu_id": "nlp-01-gpu-1", "model": "A100", "memory_mib": 40960, "profile": null}
+      ]
+    }
+  ]
+}
