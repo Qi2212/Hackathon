@@ -3,175 +3,80 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="description" content="Campus GPU Fabric - 可回收、可解释的校园 GPU 算力互助平台">
-  <title>Aurora · Campus GPU Fabric</title>
-  <link rel="stylesheet" href="/static/styles.css">
-  <link rel="stylesheet" href="/static/live.css">
+  <meta name="description" content="Aurora 校园 GPU 互助工作台：发现算力、了解卡主计划、追踪任务与贡献。">
+  <title>Aurora · 校园算力互助</title>
+  <link rel="stylesheet" href="/static/workspace.css">
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <a class="brand" href="#overview" aria-label="Aurora 首页">
-        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span><b>AURORA</b><small>GPU FABRIC</small></span>
-      </a>
-      <nav id="nav" aria-label="主导航">
-        <button class="nav-item active" data-route="overview"><span class="nav-icon">⌁</span><span>资源总览</span></button>
-        <button class="nav-item" data-route="submit"><span class="nav-icon">＋</span><span>智能提交</span></button>
-        <button class="nav-item" data-route="tasks"><span class="nav-icon">◫</span><span>我的任务</span></button>
-        <button class="nav-item" data-route="queues"><span class="nav-icon">≋</span><span>队列与预测</span></button>
-        <button class="nav-item" data-route="economy"><span class="nav-icon">¥</span><span>来源与收益</span></button>
-        <button class="nav-item" data-route="groups"><span class="nav-icon">⌘</span><span>资源小组</span></button>
-        <button class="nav-item" data-route="approvals"><span class="nav-icon">✓</span><span>私有卡审批</span><em id="approvalCount">0</em></button>
-        <button class="nav-item" data-route="mount"><span class="nav-icon">⛓</span><span>服务器挂载</span></button>
-        <button class="nav-item" data-route="lab"><span class="nav-icon">⌬</span><span>实验室画像</span></button>
-        <button class="nav-item" data-route="timeline"><span class="nav-icon">≋</span><span>状态时间线</span></button>
-      </nav>
-      <div class="sidebar-note">
-        <span class="pulse"></span>
-        <div><b>本机 Demo</b><small>内存状态 · 重启后恢复快照</small></div>
-      </div>
-      <div class="user-card">
-        <span class="avatar">林</span>
-        <div><b>林同学</b><small id="roleLabel">普通用户</small></div>
-        <button class="icon-btn" title="切换身份" id="roleSwitch">↕</button>
-      </div>
-    </aside>
+<svg class="icon-definitions" aria-hidden="true"><defs>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+<symbol id="i-gpu" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v3m6-3v3M9 19v3m6-3v3M2 9h3m-3 6h3M19 9h3m-3 6h3"/></symbol>
+<symbol id="i-task" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="3"/><path d="M9 3h6v3H9zm0 9 2 2 4-4m-6 8h6"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2m1-15a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 4v2"/></symbol>
+<symbol id="i-book" viewBox="0 0 24 24"><path d="M12 6v15M3 4h5a4 4 0 0 1 4 3 4 4 0 0 1 4-3h5v15h-5a4 4 0 0 0-4 2 4 4 0 0 0-4-2H3z"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 6 6"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+<symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18M6 15l4-5 4 3 6-8"/></symbol>
+</defs></svg>
 
-    <main class="main">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow" id="pageEyebrow">资源控制面 / 实时</p>
-          <h1 id="pageTitle">全局资源态势</h1>
-        </div>
-        <div class="top-actions">
-          <span class="logic-clock"><i></i><span>逻辑时钟</span><b id="logicalTime">--:--:--</b></span>
-          <button class="button ghost" id="advanceClock">+ 5 分钟</button>
-          <button class="button primary route-link" data-route="submit">提交任务</button>
-        </div>
-      </header>
-
-      <div id="toast" class="toast" role="status" aria-live="polite"></div>
-      <div class="demo-toolbar"><div><b id="connectionStatus">连接资源服务…</b><small id="extensionStatus">连接任务解析与策略服务…</small></div><label>演示身份 <input id="ownerInput" aria-label="X-Owner" value="u-20260309"></label><button id="ownerApply" class="button ghost">切换</button><label>测试密钥 <input id="testKey" type="password" value="campus-test-key" aria-label="测试密钥"></label></div>
-
-      <section class="page" data-page="queues"><div class="section-heading"><div><p class="eyebrow">QUEUE SIMULATION</p><h2>队列、我的位置与时间预测</h2><p class="subcopy" id="queueNote"></p><p class="subcopy">高亮格为当前身份的任务。格位为模拟排队顺序，卡槽 ID 显示在格内；预测不构成资源预留。</p></div></div><div id="queueGrid"></div></section>
-      <section class="page" data-page="economy"><div class="section-heading"><div><p class="eyebrow">DEMO ECONOMY</p><h2>资源从哪里来，收益到哪里去</h2><p class="subcopy">以下为 Excel 预制历史与积分口径，不包含现场提交任务的实时结算。实时贡献登记与结算见扩展工作台（默认 http://localhost:8090/ui/）。</p></div></div><article class="content-card"><h3>按公共 / 实验室 / 个人来源</h3><div id="sourceRevenue"></div></article><article class="content-card"><h3>贡献者收益</h3><div id="providerRevenue"></div></article><article class="content-card"><h3>平台收益拆分</h3><div id="platformRevenue"></div></article></section>
-      <section class="page" data-page="groups"><div class="section-heading"><div><p class="eyebrow">RESOURCE GROUPS</p><h2>小组与资源归属</h2><p class="subcopy">Excel 预制小组展示。当前未实现创建 / 邀请 / 成员权限，以及实验室 → 小组 → 大厅的调度策略；以下规则是配置说明，尚未成为服务端权限约束。</p></div></div><div id="groupGrid" class="group-grid"></div></section>
-
-      <section class="page active" data-page="overview">
-        <div class="hero-grid">
-          <article class="health-panel dark-panel">
-            <div class="panel-heading">
-              <div><p class="eyebrow lime">FABRIC PULSE</p><h2>资源池正在呼吸</h2></div>
-              <span class="live-pill"><i></i> LIVE</span>
-            </div>
-            <div class="orbit-visual" aria-hidden="true">
-              <div class="orbit o1"><i></i><i></i><i></i></div>
-              <div class="orbit o2"><i></i><i></i></div>
-              <div class="orbit-core"><strong id="heroFree">--</strong><span>GPU 可立即使用</span></div>
-            </div>
-            <div class="pulse-stats">
-              <span><b id="heroTotal">--</b><small>总 GPU</small></span>
-              <span><b id="heroPrivate">--</b><small>私有贡献</small></span>
-              <span><b id="heroHealth">--</b><small>节点在线</small></span>
-            </div>
-          </article>
-
-          <div class="metric-grid">
-            <article class="metric-card accent-cyan"><div class="metric-top"><span>GPU 利用率</span><em>实时容量</em></div><strong id="metricUtil">--%</strong><div class="mini-bars" id="utilBars"></div><p>下方曲线来自 Excel 历史快照</p></article>
-            <article class="metric-card"><div class="metric-top"><span>运行中任务</span><em class="cyan-dot">●</em></div><strong id="metricRunning">--</strong><p>其中 <b id="metricCheckpoint">0</b> 个支持检查点</p><a class="route-link" data-route="tasks">查看任务 →</a></article>
-            <article class="metric-card accent-yellow"><div class="metric-top"><span>当前身份关联的待审批</span><em>实时</em></div><strong id="metricApprovals">--</strong><p>历史审批单独标注为快照</p><a class="route-link" data-route="approvals">查看审批 →</a></article>
-            <article class="metric-card"><div class="metric-top"><span>即将到期</span><em>30 min</em></div><strong id="metricExpiring">--</strong><p>TTL 自动释放尚待补齐</p><a class="route-link" data-route="tasks">查看租约 →</a></article>
-          </div>
-        </div>
-
-        <div class="section-heading"><div><p class="eyebrow">CAPACITY MAP</p><h2>算力中心</h2></div><div class="legend"><span><i class="public"></i>公共中心</span><span><i class="private"></i>私有挂载</span><span><i class="busy"></i>使用中</span></div></div>
-        <div class="resource-layout">
-          <div class="resource-list" id="resourceList"></div>
-          <aside class="activity-card">
-            <div class="panel-heading"><div><p class="eyebrow">LATEST EVENTS</p><h3>此刻发生</h3></div><button class="text-btn route-link" data-route="timeline">全部</button></div>
-            <div class="event-list" id="eventPreview"></div>
-          </aside>
-        </div>
-      </section>
-
-      <section class="page" data-page="submit">
-        <div class="split-page submit-layout">
-          <div>
-            <article class="content-card form-card">
-              <div class="step-row"><span class="active">01 任务意图</span><i></i><span>02 资源约束</span><i></i><span>03 AI 匹配</span></div>
-              <div class="section-heading compact"><div><p class="eyebrow">SMART SUBMIT</p><h2>说清任务，其余交给策略</h2><p class="subcopy">系统会同时评估显存适配、回收风险、实验室 DDL 周期与审批速度。</p></div></div>
-              <form id="taskForm">
-                <div class="field full"><label for="taskName">任务名称</label><input id="taskName" name="task_name" value="多模态检索消融实验" required></div>
-                <div class="field"><label for="requesterType">提交身份</label><select id="requesterType" name="requester_type"><option value="student">普通用户</option><option value="lab">实验室用户</option></select></div>
-                <div class="field"><label for="taskType">任务类型</label><select id="taskType" name="task_type"><option value="training">模型训练</option><option value="inference">批量推理</option><option value="interactive">交互实验</option><option value="batch">通用批任务</option></select></div>
-                <div class="field"><label for="gpuModel">期望 GPU</label><select id="gpuModel" name="gpu_model"><option>any</option><option>A100</option><option>H100</option><option>RTX 4090</option><option>RTX 3090</option></select></div>
-                <div class="field"><label for="gpuCount">GPU 数量</label><input id="gpuCount" name="gpu_count" type="number" min="1" max="8" value="1"></div>
-                <div class="field"><label for="memoryMib">最低显存</label><select id="memoryMib" name="memory_mib"><option value="12000">12 GB</option><option value="20000" selected>20 GB</option><option value="40000">40 GB</option><option value="80000">80 GB</option></select></div>
-                <div class="field"><label for="ttlSeconds">预计使用</label><select id="ttlSeconds" name="ttl_seconds"><option value="900">15 分钟</option><option value="1800" selected>30 分钟</option><option value="3600">1 小时</option></select></div>
-                <div class="field full"><label for="deadline">截止时间</label><input id="deadline" name="deadline" type="datetime-local"></div>
-                <div class="field full"><label for="strategySelect">提交策略</label><select id="strategySelect"><option value="balanced">均衡 Balanced</option><option value="economy">经济 Economy</option><option value="fast">最快 Fast</option><option value="stable">稳定 Stable</option></select></div>
-                <label class="toggle-row full"><span><b>支持 Checkpoint</b><small>声明任务支持检查点；当前演示需手动记录与恢复</small></span><input id="checkpointable" type="checkbox" checked><i></i></label>
-                <div class="form-actions full"><button type="button" class="button ghost" id="estimateBtn">只做预估</button><button class="button primary" type="submit">AI 匹配并提交 →</button></div>
-              </form>
-              <p class="subcopy">提交身份以顶部 X-Owner 为准；此处实验室身份选项尚未接入权限。界面先生成条件排队预测，再由扩展服务对当前空闲资源生成四策略。示例 Job 使用模拟命令，不运行真实 GPU 训练。</p>
-              <div id="strategyResults" class="strategy-results"></div>
-            </article>
-          </div>
-          <aside class="strategy-panel dark-panel">
-            <p class="eyebrow lime">PLACEMENT BRAIN</p><h2>匹配策略画像</h2>
-            <div class="brain-lines"><span style="--p:84%"><b>显存适配</b><i></i><em>84</em></span><span style="--p:92%"><b>稳定性</b><i></i><em>92</em></span><span style="--p:68%"><b>成本收益</b><i></i><em>68</em></span><span style="--p:76%"><b>DDL 风险</b><i></i><em>76</em></span></div>
-            <div class="strategy-note"><span>AI</span><p>预估不会占卡。以下为 GPU 队列条件模拟；实际提交使用扩展服务的四策略。组内优先与个人权限尚未接入。</p></div>
-            <div id="ranking" class="ranking-list"><div class="empty-state">提交后在此解释每张候选卡为什么被选择。</div></div>
-          </aside>
-        </div>
-      </section>
-
-      <section class="page" data-page="tasks">
-        <div class="section-heading"><div><p class="eyebrow">MY WORKLOADS</p><h2>任务与租约</h2><p class="subcopy">状态来自资源接口；TTL 自动释放、Pending 自动派发和 Job 自动完成仍待补齐。</p></div><div class="segmented"><button class="active">全部</button><button>运行中</button><button>等待中</button><button>已结束</button></div></div>
-        <div class="task-grid" id="taskGrid"></div>
-      </section>
-
-      <section class="page" data-page="approvals">
-        <div class="section-heading"><div><p class="eyebrow">PRIVATE GPU GATE</p><h2>私有卡审批台</h2><p class="subcopy">贡献者始终拥有最后决定权。批准后由申请人确认提交，实际绑定以资源接口结果为准。</p></div><span class="sla-pill">现场审批与历史快照分开</span></div>
-        <div class="approval-layout"><div id="approvalList" class="approval-list"></div><aside class="profile-card" id="approvalProfile"><div class="empty-state">选择一条申请，查看任务与实验室画像。</div></aside></div>
-      </section>
-
-      <section class="page" data-page="mount">
-        <div class="split-page mount-layout">
-          <article class="content-card form-card">
-            <p class="eyebrow">CONTRIBUTE CAPACITY / PLANNED</p><h2>挂载一台私有服务器</h2><p class="subcopy">此页为规划界面，尚未实现 Agent 注册、心跳和硬件自检。Demo 请修改 Excel 的 nodes / gpus 后重新生成种子；不会真实连接服务器。</p>
-            <form id="mountForm">
-              <div class="field"><label>所属实验室</label><select name="lab_id"><option value="lab-vision">视觉智能实验室</option><option value="lab-nlp">自然语言处理实验室</option><option value="lab-robot">机器人实验室</option></select></div>
-              <div class="field"><label>主机名</label><input name="hostname" value="vision-rtx-a02" required></div>
-              <div class="field"><label>GPU 型号</label><select name="gpu_model"><option>RTX 4090</option><option>A100</option><option>H100</option><option>RTX 3090</option></select></div>
-              <div class="field"><label>GPU 数量</label><input name="gpu_count" type="number" min="1" max="16" value="2"></div>
-              <div class="field"><label>单卡显存 MiB</label><input name="memory_mib" type="number" value="24564"></div>
-              <div class="field"><label>收回通知期</label><select name="reclaim_notice_seconds"><option value="30">30 秒</option><option value="60" selected>60 秒</option><option value="120">120 秒</option></select></div>
-              <div class="field full"><label>可共享时段</label><input name="available_window" value="工作日 19:00 - 次日 08:00"></div>
-              <div class="form-actions full"><button class="button primary" type="submit">开始安全验证 →</button></div>
-            </form>
-          </article>
-          <aside class="mount-steps dark-panel">
-            <p class="eyebrow lime">ZERO-TRUST ONBOARDING</p><h2>四步接入，不交出机器</h2>
-            <ol><li class="done"><span>01</span><div><b>安装轻量 Agent</b><small>生成一次性连接令牌</small></div></li><li><span>02</span><div><b>硬件与拓扑自检</b><small>型号、显存、MIG profile</small></div></li><li><span>03</span><div><b>网络与 Checkpoint 基线</b><small>只声明被实际验证的数据</small></div></li><li><span>04</span><div><b>确认贡献策略</b><small>时段、通知期、收益规则</small></div></li></ol>
-            <div class="reclaim-box"><b>随时可收回</b><p>点击“收回”后，运行任务先进入通知期。到点无论 Checkpoint 成功与否都会归还 GPU。</p></div>
-          </aside>
-        </div>
-      </section>
-
-      <section class="page" data-page="lab">
-        <div class="section-heading"><div><p class="eyebrow">LAB INTELLIGENCE</p><h2>贡献收益与使用画像</h2><p class="subcopy">不是给实验室贴标签，而是让资源匹配理解“什么时候最忙、什么任务更合适”。</p></div><select class="header-select" id="labSelect"><option value="lab-nlp">自然语言处理实验室</option><option value="lab-vision">视觉智能实验室</option><option value="lab-robot">机器人实验室</option></select></div>
-        <div class="lab-hero dark-panel"><div><p class="eyebrow lime">CONTRIBUTION RETURN</p><h2 id="labName">自然语言处理实验室</h2><p>本月贡献帮助 31 个任务减少排队，平台会在本实验室 DDL 周期自动提升保留容量。</p></div><div class="earnings"><span><small>可用贡献积分</small><strong id="labCredits">26,780</strong></span><span><small>累计贡献时长</small><strong id="labHours">2,116 h</strong></span><span><small>本月预估收益</small><strong>+ 3,420</strong></span></div></div>
-        <div class="lab-grid"><article class="content-card"><div class="panel-heading"><div><p class="eyebrow">USAGE RHYTHM</p><h3>DDL 使用节律</h3></div><span class="tag">Excel 演示画像</span></div><div class="calendar-heat" id="heatmap"></div><p class="insight" id="labPeak">ACL / EMNLP 前 45 天出现高峰，建议提前预留 2×A100。</p></article><article class="content-card"><div class="panel-heading"><div><p class="eyebrow">CONTRIBUTION</p><h3>近 7 日贡献</h3></div></div><div class="contrib-chart" id="contribChart"></div><div class="chart-labels"><span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span></div></article><article class="content-card lab-policy"><p class="eyebrow">POLICY</p><h3>本实验室资源偏好</h3><dl><div><dt>平均审批</dt><dd id="labSla">8 min</dd></div><div><dt>回收风险</dt><dd id="labRisk">高</dd></div><div><dt>适配任务</dt><dd id="labPreferred">--</dd></div><div><dt>规划保护规则</dt><dd id="labProtect">--</dd></div></dl></article></div>
-      </section>
-
-      <section class="page" data-page="timeline">
-        <div class="section-heading"><div><p class="eyebrow">EXPLAINABLE STATE</p><h2>状态时间线</h2><p class="subcopy">回答“我的任务在哪里、为什么停了、资源什么时候归还”。</p></div><button class="button ghost" id="refreshEvents">刷新事件</button></div>
-        <div class="timeline-layout"><div class="timeline" id="timelineList"></div><aside class="invariant-card dark-panel"><p class="eyebrow lime">LEDGER INVARIANTS</p><h2>账本规则说明</h2><p class="subcopy">以下是规则说明，不是实时检测结果；私有授权尚未覆盖全部服务端访问路径。</p><ul><li><i>·</i><span><b>无 GPU 超卖</b><small>每张卡最多一个活跃 allocation</small></span></li><li><i>·</i><span><b>幂等请求去重</b><small>同 Owner + Key 返回同一分配</small></span></li><li><i>·</i><span><b>终态不占资源</b><small>Expired / Evicted / Released 已归还</small></span></li><li><i>·</i><span><b>审批前不扣账</b><small>私有卡批准后才原子放置</small></span></li></ul></aside></div>
-      </section>
-    </main>
+<section id="loginScreen" class="login-screen" aria-label="选择演示账号">
+  <div class="login-story">
+    <a class="brand light" href="#login"><span class="brand-mark">a</span><span>Aurora<small>CAMPUS GPU FABRIC</small></span></a>
+    <div class="story-content"><span class="eyebrow">让校园的每一份算力，都有用武之地</span><h1>连接空闲算力，<br>接续你的灵感<span>。</span></h1><p>从一张 GPU 的共享，到跨实验室的协作。<br>看得见资源，读得懂计划，等得到进展。</p>
+      <div class="login-illustration" aria-hidden="true"><div class="illustration-line"></div><div class="illustration-gpu"><svg class="icon"><use href="#i-gpu"/></svg><span>共享工作站</span><b>RTX 4090</b><div class="illustration-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><small><i class="status-dot"></i> 连接下一次实验</small></div><div class="floating-note note-one"><span class="mini-avatar">林</span><div>我的实验有了进展<small>任务正在运行</small></div></div><div class="floating-note note-two"><span class="mini-check">✓</span><div>空闲时段可以被看见<small>共享计划 · 一目了然</small></div></div></div>
+      <div class="story-steps"><span><b>01</b> 选择身份</span><span><b>02</b> 发现算力</span><span><b>03</b> 开始实验</span></div>
+    </div><small class="login-footnote">AURORA / 校园算力互助演示系统</small>
   </div>
-  <script src="/static/live.js" defer></script>
+  <div class="login-panel"><div class="login-inner"><span class="pill teal">DEMO WORKSPACE</span><h2>从你的角色开始</h2><p class="muted">选择一个测试账号，体验属于你的资源、任务和贡献。</p><div id="accountChoices" class="account-choices"><p class="empty-state">正在加载测试账号…</p></div><label class="field other-account">也可以选择其他演示成员<select id="otherAccount"><option value="">更多演示用户</option></select></label><button id="enterWorkspace" class="button primary login-enter" disabled>进入工作台 <svg class="icon"><use href="#i-arrow"/></svg></button><p id="loginMessage" class="login-message">演示账号无需密码，仅用于体验角色切换。</p><button class="text-button login-help" id="loginGuide"><svg class="icon"><use href="#i-book"/></svg> 第一次使用？先看一分钟介绍</button></div></div>
+</section>
+
+<div id="appShell" class="app-shell" hidden>
+  <aside class="sidebar">
+    <a class="brand" href="#overview"><span class="brand-mark">a</span><span>Aurora<small>校园算力互助</small></span></a>
+    <div class="workspace-label">我的算力空间 <span class="pill subtle">DEMO</span></div>
+    <nav id="nav" aria-label="主导航">
+      <details class="nav-group" data-group="discover" open><summary><svg class="icon"><use href="#i-grid"/></svg>发现算力<span class="chevron">⌄</span></summary><div class="nav-children"><button class="nav-item active" data-route="overview">算力广场</button><button class="nav-item" data-route="submit">提交实验</button><button class="nav-item" data-route="queues">队列与预测</button></div></details>
+      <details class="nav-group" data-group="personal"><summary><svg class="icon"><use href="#i-task"/></svg>我的工作台<span class="chevron">⌄</span></summary><div class="nav-children"><button class="nav-item" data-route="tasks">我的任务</button><button class="nav-item" data-route="profile">个人画像</button><button class="nav-item" data-route="economy">收支与收益</button></div></details>
+      <details class="nav-group" data-group="collaborate"><summary><svg class="icon"><use href="#i-users"/></svg>协作与贡献<span class="chevron">⌄</span></summary><div class="nav-children"><button class="nav-item" data-route="groups">资源小组</button><button class="nav-item" data-route="approvals">共享审批 <span id="approvalCount" class="count-badge">0</span></button><button class="nav-item" data-route="mount">贡献资源</button></div></details>
+      <details class="nav-group" data-group="help"><summary><svg class="icon"><use href="#i-book"/></svg>帮助与记录<span class="chevron">⌄</span></summary><div class="nav-children"><button class="nav-item" data-route="guide">使用指南</button><button class="nav-item" data-route="timeline">事件记录</button></div></details>
+    </nav>
+    <div class="sidebar-bottom"><button class="help-shortcut" data-route="guide"><span>第一次来？</span><b>了解 Aurora 的使用方式 ↗</b></button><div class="connection"><i id="connectionDot" class="status-dot"></i><span id="connectionStatus">连接中</span></div><button id="switchAccount" class="sidebar-account"><span class="avatar" id="sidebarAvatar">林</span><span><b id="sidebarUser">演示用户</b><small id="sidebarRole">选择身份开始</small></span><span class="switch-icon">↔</span></button></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div><div class="breadcrumb"><span>Aurora 工作空间</span><span>/</span><span id="breadcrumbGroup">发现算力</span></div><h1 id="pageTitle">算力广场</h1></div><div class="top-actions"><span class="snapshot-clock"><i class="status-dot"></i><span id="logicalTime">同步中</span></span><button class="button secondary" data-route="guide"><svg class="icon"><use href="#i-book"/></svg><span>使用指南</span></button><button class="button primary" data-route="submit">＋ 新建实验</button><button class="avatar top-avatar" id="profileShortcut" aria-label="查看个人画像">林</button></div></header>
+    <div id="serviceNotice" class="notice warning" hidden></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <section class="page active" data-page="overview">
+      <div class="welcome-banner"><div><span class="eyebrow">CONNECTED COMPUTE, SHARED POSSIBILITIES</span><h2 id="welcomeTitle">让下一次实验，更快开始。</h2><p>先选一张卡，了解它的卡主、计划和可共享时段。</p><button class="button banner-button" data-route="submit">开始我的实验 <span>↗</span></button></div><div class="banner-orbit" aria-hidden="true"><div class="orbit orbit-a"></div><div class="orbit orbit-b"></div><div class="orbit-chip"><svg class="icon"><use href="#i-gpu"/></svg></div><span class="orbit-label label-a"><i></i>校园算力，彼此连接</span><span class="orbit-label label-b">GPU · SHARED</span></div></div>
+      <div class="metric-row"><article class="metric-card"><span>此刻可用</span><div><strong id="heroFree">—</strong><small>张 GPU</small><span class="metric-icon mint"><svg class="icon"><use href="#i-gpu"/></svg></span></div><p><b id="heroTotal">—</b> 张卡连接在一起</p></article><article class="metric-card"><span>我的运行任务</span><div><strong id="metricRunning">—</strong><small>个实验</small><span class="metric-icon violet"><svg class="icon"><use href="#i-task"/></svg></span></div><button class="text-button" data-route="tasks">查看任务进展 ↗</button></article><article class="metric-card"><span>我的等待任务</span><div><strong id="metricWaiting">—</strong><small>个排队中</small><span class="metric-icon amber"><svg class="icon"><use href="#i-clock"/></svg></span></div><button class="text-button" data-route="queues">看看我排到哪里 ↗</button></article><article class="metric-card"><span>我的贡献收益</span><div><strong id="metricEarned">—</strong><small>积分</small><span class="metric-icon blue"><svg class="icon"><use href="#i-chart"/></svg></span></div><p>近 30 日 · 演示记录</p></article></div>
+      <div class="section-heading"><div><h2>找一份合适的算力</h2><p>公共资源直接申请，私有资源先与卡主确认。</p></div><span id="resourceCount" class="muted"></span></div>
+      <div class="resource-toolbar"><label class="search-field"><svg class="icon"><use href="#i-search"/></svg><input id="resourceSearch" type="search" placeholder="搜索 GPU、卡主或工作站" aria-label="搜索资源"></label><select id="modelFilter" aria-label="筛选 GPU 型号"><option value="">全部型号</option></select><select id="sourceFilter" aria-label="筛选资源来源"><option value="">全部来源</option><option value="public">公共资源</option><option value="private">个人私有</option></select><select id="availabilityFilter" aria-label="筛选可用状态"><option value="">全部状态</option><option value="free">当前有空闲</option><option value="mine">我的资源</option></select></div>
+      <div class="resource-list" id="resourceList"></div>
+      <div class="overview-bottom"><article class="panel"><div class="panel-heading"><h3>校园算力的最近 12 小时</h3><span class="pill subtle">历史样本</span></div><div id="utilHistory"></div></article><article class="panel"><div class="panel-heading"><h3>此刻发生</h3><button class="text-button" data-route="timeline">全部记录 ↗</button></div><div id="eventPreview" class="event-preview"></div></article></div>
+    </section>
+
+    <section class="page" data-page="submit"><div class="section-heading"><div><h2>告诉我们，你想运行什么</h2><p>先预估、再选择方案；预估不会占用 GPU。</p></div><span class="pill teal">01 需求 → 02 方案 → 03 确认</span></div><div class="submit-layout"><article class="panel form-panel"><div id="selectedResource" class="notice info" hidden></div><form id="taskForm"><div class="field full"><label for="taskName">实验名称</label><input id="taskName" name="task_name" value="多模态检索消融实验" required maxlength="120"></div><div class="field"><label for="taskType">实验类型</label><select id="taskType" name="task_type"><option value="training">模型训练</option><option value="inference">批量推理</option><option value="interactive">交互实验</option><option value="batch">数据处理</option></select></div><div class="field"><label for="gpuModel">GPU 型号</label><select id="gpuModel" name="gpu_model"><option value="any">让系统推荐</option><option>A100</option><option>H100</option><option>RTX 4090</option><option>RTX 3090</option></select></div><div class="field"><label for="gpuCount">GPU 数量</label><input id="gpuCount" name="gpu_count" type="number" min="1" max="8" value="1" required></div><div class="field"><label for="memoryMib">单卡最低显存</label><select id="memoryMib" name="memory_mib"><option value="12000">约 12 GB</option><option value="20000" selected>约 20 GB</option><option value="40000">约 40 GB</option><option value="80000">约 80 GB</option></select></div><div class="field"><label for="ttlSeconds">预计使用多久</label><select id="ttlSeconds" name="ttl_seconds"><option value="900">15 分钟</option><option value="1800" selected>30 分钟</option><option value="3600">1 小时</option></select></div><div class="field"><label for="deadline">希望在此之前完成（可选）</label><input id="deadline" name="deadline" type="datetime-local"></div><div class="field full"><label for="strategySelect">你更在意什么</label><select id="strategySelect"><option value="balanced">综合均衡 · 成本与稳定性都照顾</option><option value="economy">节省积分 · 经济优先</option><option value="fast">更快开始 · 算力优先</option><option value="stable">少受打断 · 稳定优先</option></select></div><label class="check-field full"><input id="checkpointable" type="checkbox" checked><span>我的任务支持保存检查点<small>资源被收回时，可手动记录检查点并申请恢复。</small></span></label><div class="form-actions full"><button type="button" class="button secondary" id="estimateBtn">先看看预估</button><button class="button primary" type="submit">确认方案并申请 <span>↗</span></button></div></form><p id="extensionStatus" class="form-footnote">正在连接任务服务</p></article><aside class="panel prediction-panel"><span class="eyebrow">BEFORE YOU COMMIT</span><h3>先看清楚，再开始。</h3><p class="muted">你可能排在哪张卡、等待多久，都在这里。</p><div id="ranking"><div class="empty-state"><svg class="icon"><use href="#i-chart"/></svg><b>还没有生成预估</b><p>填好左侧需求，点击「先看看预估」。</p></div></div><div class="fine-print">预测以租约释放为假设，不构成预约；当前仅能对有空闲兼容资源的策略发起申请。</div></aside></div><div id="strategyResults" class="strategy-results"></div></section>
+
+    <section class="page" data-page="tasks"><div class="section-heading"><div><h2>每一次实验，都有迹可循</h2><p>查看当前身份的任务和租约，继续等待、续租或释放资源。</p></div><select id="taskFilter" aria-label="筛选我的任务"><option value="">全部任务</option><option value="active">运行 / 已分配</option><option value="Pending">排队中</option><option value="ended">已结束</option></select></div><div id="taskGrid" class="task-grid"></div></section>
+    <section class="page" data-page="queues"><div class="section-heading"><div><h2>我的实验，排到哪里了？</h2><p>绿色卡片是你的任务；每个格位都能看到预计节点和起止时间。</p></div><label class="inline-check"><input id="onlyMyQueue" type="checkbox">只看与我有关的队列</label></div><p id="queueNote" class="notice info"></p><div id="queueGrid"></div></section>
+    <section class="page" data-page="profile"><div id="personalProfile"><div class="empty-state">正在整理你的个人画像…</div></div></section>
+    <section class="page" data-page="economy"><div class="section-heading"><div><h2>每一份贡献，都值得被看见</h2><p>先看自己的收支，再了解资源来源和平台分配。</p></div><span class="pill subtle">积分 · 演示历史</span></div><div id="myEconomy" class="metric-row"></div><details class="panel economy-details"><summary>了解公共 / 私有来源与平台收益分配</summary><p class="muted">以下为 内置近30日模拟记录，现场新任务不会自动计入这些汇总。</p><h3>按资源来源</h3><div id="sourceRevenue"></div><h3>贡献者收益</h3><div id="providerRevenue"></div><h3>平台收益拆分</h3><div id="platformRevenue"></div></details></section>
+    <section class="page" data-page="groups"><div class="section-heading"><div><h2>让资源在熟悉的人之间流动</h2><p>查看已有的小组、成员和公共 / 个人资源归属。</p></div><span class="pill amber">预制小组展示</span></div><div id="groupGrid" class="group-grid"></div><p class="fine-print">小组创建、邀请和成员权限仍在规划中，当前规则为演示配置。</p></section>
+    <section class="page" data-page="approvals"><div class="section-heading"><div><h2>先确认，再共享</h2><p>私有资源由卡主决定是否授权；批准后，申请人再确认提交。</p></div><span id="approvalSummary" class="pill teal"></span></div><div id="approvalList" class="approval-list"></div></section>
+    <section class="page" data-page="mount"><div class="contribution-intro panel"><span class="pill teal">成为算力贡献者</span><h2>你的空闲时段，<br>可以接住别人的灵感。</h2><p class="muted">资源属于你。你可以声明共享时段、审核申请，并保留收回资源的权利。</p><div class="guide-steps"><article><span>01</span><h3>登记你的工作站</h3><p>确认 GPU 型号、显存与归属。</p></article><article><span>02</span><h3>声明共享时段</h3><p>把自用计划和可共享窗口说清楚。</p></article><article><span>03</span><h3>确认借用申请</h3><p>查看任务，再决定是否授权。</p></article></div><div id="myContribution"></div><div class="notice info">当前 Demo 使用内置模拟资源，尚未接入真实 Agent 或服务器注册。你可以先查看自己的资源详情与共享计划。</div><button class="button primary" data-route="profile">查看我的资源与计划 ↗</button></div></section>
+    <section class="page" data-page="timeline"><div class="section-heading"><div><h2>发生了什么，为什么发生</h2><p>现场操作与历史样本分开标注，方便你回看实验过程。</p></div><button id="refreshEvents" class="button secondary">刷新记录</button></div><div id="timelineList" class="timeline panel"></div></section>
+
+    <section class="page" data-page="guide"><div class="guide-hero"><span class="pill teal">START HERE</span><h2>一分钟，读懂 Aurora。</h2><p>它把学校、实验室和个人的 GPU 连接起来，让你找到可用算力，<br>也让你把闲置时段分享给别人。</p></div><div id="guideRoles" class="segmented"><button class="active" data-guide-role="borrower">我想借用算力</button><button data-guide-role="provider">我想贡献 GPU</button><button data-guide-role="collaborator">我想了解小组协作</button></div><div id="guideFlow" class="guide-steps"></div><div id="guideAction" class="guide-action"></div><div class="guide-columns"><article class="panel"><h3>你在页面上看到的状态</h3><div class="state-flow"><span class="pill amber">排队中</span><span>→</span><span class="pill blue">已分配</span><span>→</span><span class="pill teal">运行中</span><span>→</span><span class="pill subtle">已释放</span></div><p>排队还没有占卡；分配成功才开始计算租约。租约到期时间与任务完成时间不同。</p><p>私有卡还会多一步「卡主审批」。批准后，由申请人确认提交。</p></article><article class="panel"><h3>几件容易混淆的事</h3><details><summary>公共卡和私有卡有什么区别？</summary><p>公共卡按当前策略申请；个人私有卡保留卡主授权。组内实验室公共卡与个人私有卡分别展示归属。</p></details><details><summary>详情里的曲线，代表什么？</summary><p>项目曲线来自预制演示计划；可共享时段按卡主声明和现有租约推算。它们不是实际 GPU 监控，也不保证资源一定可用。</p></details><details><summary>贡献收益如何查看？</summary><p>个人画像显示该账号的历史收支和拥有的 GPU；收支页可展开查看资源来源与平台分配。历史汇总不会随现场新任务自动结算。</p></details></article></div><article class="panel demo-boundaries"><h3>这次 Demo，可以怎样体验</h3><p>选择账号 → 查看卡主计划 → 预估方案 → 申请资源 → 在「我的任务」里查看状态。私有卡需切换到对应卡主审批，再切回申请人提交。</p><p class="muted">小组创建 / 权限、自动派发和完整 TTL 自动释放尚未完成；不会在界面上当成已实现功能。</p><details><summary>演示控制与数据说明</summary><label class="field">测试时钟密钥<input id="testKey" type="password" value="campus-test-key" autocomplete="off"></label><button id="advanceClock" class="button secondary">将演示时钟推进 5 分钟</button><p class="fine-print">默认数据为 12 个节点 / 34 张 GPU。全部数据由项目内代码合成，无需 Excel；执行 python -m tools.build_demo_seed 可重新生成。重启会恢复场景。测试密钥与模型 API key 不同。</p><button id="logoutButton" class="text-button">退出当前体验，回到账号选择</button></details></article></section>
+    <footer class="page-footer"><span>Aurora · 让算力互助自然发生</span><span>校园算力演示 / 数据与预测已分开标注</span></footer>
+  </main>
+</div>
+
+<dialog id="resourceDialog" class="resource-dialog" aria-labelledby="resourceDialogTitle"><div class="dialog-header"><div><span class="eyebrow">RESOURCE INSIGHT</span><h2 id="resourceDialogTitle">GPU 资源详情</h2></div><button class="icon-button" id="closeResource" aria-label="关闭资源详情"><svg class="icon"><use href="#i-close"/></svg></button></div><div id="resourceDetail"></div></dialog>
+<dialog id="introDialog" class="intro-dialog" aria-labelledby="introTitle"><button class="icon-button intro-close" id="closeIntro" aria-label="关闭介绍"><svg class="icon"><use href="#i-close"/></svg></button><span class="pill teal">你好，欢迎来到 Aurora</span><h2 id="introTitle">把算力借来，<br>也把空闲分享出去。</h2><p>借用者找到 GPU 并提交任务；贡献者声明计划、审核私有资源申请。每个人都能看到自己的任务和贡献。</p><ol class="intro-list"><li><b>选一个身份</b><span>测试账号无需密码，可以随时切换。</span></li><li><b>点开一张资源卡</b><span>看型号、归属、卡主项目进度与共享时段。</span></li><li><b>预估，再申请</b><span>比较四种方案，在「我的任务」里追踪进展。</span></li></ol><button id="introContinue" class="button primary">明白了，选择账号开始 ↗</button></dialog>
+<div id="chartTooltip" class="chart-tooltip" role="status" hidden></div>
+<script src="/static/workspace.js" defer></script>
 </body>
 </html>

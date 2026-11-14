@@ -1,8 +1,4 @@
-"""演示快照加载（FABRIC_DEMO=1 时启用）。
-
-快照由 `python -m tools.build_demo_seed` 从
-`app/data/Aurora_GPU_Fabric_演示数据.xlsx` 生成，只包含资源与占用事实。
-"""
+"""加载内置合成演示快照，不读取 Excel 或外部数据。"""
 
 from __future__ import annotations
 

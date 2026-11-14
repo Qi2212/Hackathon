@@ -29,8 +29,8 @@ def test_dashboard_live_and_snapshot_are_separate(demo_client):
     result = client.get("/api/dashboard", headers={"X-Owner": "u-20260309"})
     assert result.status_code == 200
     data = result.json()
-    assert data["capacity"]["totals"]["gpu_total"] == 84
-    assert data["capacity"]["totals"]["gpu_free"] == 8
+    assert data["capacity"]["totals"]["gpu_total"] == 34
+    assert data["capacity"]["totals"]["gpu_free"] == 10
     assert len(data["allocations"]) == len(state.allocations)
     assert len(data["presentation"]["groups"]) == 3
     assert data["presentation"]["revenue_by_source"]
@@ -87,3 +87,61 @@ def test_preview_is_pinned_to_selected_strategy_node_and_queue(demo_client):
     assert p["node_id"] == node["node_id"]
     assert p["queue_id"] == node["labels"]["queue_id"]
     assert client.post("/api/demo/preview", json={"node_id": "missing"}).status_code == 400
+
+
+def test_featured_accounts_are_ready_to_switch_without_credentials(demo_client):
+    client, _ = demo_client
+    data = client.get("/api/demo/accounts").json()
+    assert len(data["featured"]) == 4
+    assert data["authentication"] == "demo_identity_only"
+    assert len({u["user_id"] for u in data["featured"]}) == 4
+    assert all("password" not in u for u in data["users"])
+
+
+def test_personal_profile_changes_with_selected_user(demo_client):
+    client, _ = demo_client
+    a = client.get("/api/demo/profile", headers={"X-Owner": "u-20260309"}).json()
+    b = client.get("/api/demo/profile", headers={"X-Owner": "u-20260117"}).json()
+    assert a["user"]["name"] != b["user"]["name"]
+    assert a["owned_nodes"][0]["owner_id"] == a["user"]["user_id"]
+    assert b["owned_nodes"][0]["owner_id"] == b["user"]["user_id"]
+    assert all(t["owner"] == a["user"]["user_id"] for t in a["recent_tasks"])
+    assert a["project"]["source"] == "demo_project_plan"
+    assert client.get("/api/demo/profile", headers={"X-Owner": "missing"}).status_code == 404
+
+
+def test_gpu_detail_has_owner_plan_slots_and_consistent_tasks(demo_client):
+    client, state = demo_client
+    node = state.node("vision-ws-01")
+    gpu_id = node["gpus"][0]["gpu_id"]
+    data = client.get("/api/demo/nodes/vision-ws-01", params={"gpu_id": gpu_id, "horizon": 48}).json()
+    assert data["owner"]["user_id"] == "u-20260309"
+    assert data["project"]["source"] == "demo_project_plan"
+    assert len(data["availability"]) == 49
+    assert all(0 <= p["expected_free_gpus"] <= len(node["gpus"]) for p in data["availability"])
+    assert all(t["allocation_id"] in state.allocations for t in data["tasks"])
+    assert data["node"]["gpu_free"] == sum(g["held_by"] is None for g in node["gpus"])
+    assert client.get("/api/demo/nodes/vision-ws-01", params={"gpu_id": "wrong"}).status_code == 404
+    assert client.get("/api/demo/nodes/vision-ws-01", params={"horizon": 1000}).status_code == 422
+
+
+def test_public_resource_does_not_invent_a_personal_owner(demo_client):
+    client, _ = demo_client
+    data = client.get("/api/demo/nodes/central-01").json()
+    assert data["owner"] is None and data["project"] is None
+    assert data["node"]["gpu_total"] == 4
+
+
+def test_all_new_global_views_are_demo_only(demo_client, monkeypatch):
+    client, _ = demo_client
+    monkeypatch.setenv("FABRIC_DEMO", "0")
+    for path in ("/api/demo/accounts", "/api/demo/profile", "/api/demo/nodes/vision-ws-01"):
+        assert client.get(path).status_code == 404
+
+
+def test_synthetic_fixture_is_reproducible_and_revenue_balances():
+    from app.synthetic import build_seed
+    a, b = build_seed(), build_seed()
+    assert a == b and a["synthetic"] is True
+    for row in a["presentation"]["revenue_by_source"]:
+        assert abs(row["user_charges"] - row["contributor_income"] - row["platform_income"]) < .011

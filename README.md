@@ -7,7 +7,7 @@
 校园 GPU 算力互助平台的**服务端**，按冻结的 `api/openapi.yaml`（v2.0.0）实现。
 A（`app/`，8080）提供容量、allocation、任务、事件与测试时钟；B（`ext/`，8090）提供
 任务解析、估算、策略、决策、审批、结算、可用性预测与工作台。默认以
-[演示快照](#演示模式excel-快照数据)（29 节点 / 84 卡）启动，两端数字同源。
+[演示快照](#演示模式内置模拟数据)（12 节点 / 34 卡）启动，两端数字同源。
 
 ## 启动
 
@@ -30,28 +30,26 @@ python run.py
 | `RESOURCES_FILE` | 仓库根 `resources.json` | 初始资源池；文件格式见下 |
 | `FABRIC_DEMO` | 空 | `1` 时启用演示快照（见下）；`run.py` / `run_ext.py` 默认置为 `1` |
 
-### 演示模式（Excel 快照数据）
+### 演示模式（内置模拟数据）
 
-启动即回放 `app/data/Aurora_GPU_Fabric_演示数据.xlsx` 的静态快照，UI 与接口数字一致：
+当前界面不读取 Excel。资源、任务、测试用户、历史收益和利用率曲线由 app/synthetic.py 合成；项目计划样例配置在 app/data/experience_plans.json。
 
-- **29 个节点 / 84 张 GPU**：73 张已分配、2 张卡主自用（`held_by="contributor"`）、
-  8 张空闲、1 张因节点离线不可用；Pending 任务 40 条、待审批 4 条、利用率 89.3%。
-- 93 条非终态 allocation 随进程启动注入，按 `X-Owner` 可查到各自的 Running / Pending 记录。
-- 逻辑时间基线下锚到快照时刻 `2026-11-14T03:00:00Z`，`observed_at` 从此起算真实经过时间。
-- 计费改为**积分**：单价取 Excel `hourly_credit` 的型号中位数
-  （H100 4.8、A100 4.2、RTX 4090 3.2、RTX 3090 1.9 积分/GPU·小时），
-  UI 由 `/ext/v1/overview` 的 `unit` 字段切换显示为“积分”。
-- `GET /ext/v1/overview` 输出 6 个 KPI（GPU 总数 / 使用中 / 空闲 / 等待任务 / 利用率 / 待审批），
-  工作台顶部据此渲染卡片。
+- 12 台工作站 / 34 张 GPU，20 个运行任务、12 个等待任务；10 张空闲、2 张卡主自用、2 张节点离线。
+- 4 个主测试账号：林同学（借用与贡献）、周同学（私有卡贡献者）、尹同学（独立用户）、蔡老师（实验室协作）；账号选择页可进入更多模拟成员。
+- 无需密码，选择账号即可进入；这是 Demo 身份选择，不是生产认证。左下角点击账号可切换，个人画像也可切换账号。
+- 侧栏按「发现算力 / 我的工作台 / 协作与贡献 / 帮助与记录」折叠分组。
+- 点击 GPU 资源卡，可查看卡主项目进度曲线、后续计划、24/48/72 小时共享窗口、当前任务、卡槽、硬件归属及节点收益。
+- 个人画像随当前账号显示任务、个人资源、信用与收益。使用指南提供借用、贡献、协作三条体验路径。
+- 重启恢复内置场景。图表区分模拟记录、预制计划与条件预测，不提供真实 GPU 监控。
+- 默认不调用模型；API key 配置在项目根 .env，参考 .env.example。
 
-重新生成种子数据（改了 Excel 后执行）：
+修改合成场景后重新生成：
 
-```bash
-python -m tools.build_demo_seed
-```
+    python -m tools.build_demo_seed
 
-产物 `app/data/demo_seed.json`（`nodes`、`allocations`、`pricing`、`kpis`、`labs`、`queues`），
-构建期自检 GPU 守恒与孤儿持有者，`tests/test_demo_seed.py` 复验这些不变量。
+再重启 python run.py。无需 Excel、数据库、Node 构建或网络资源；网页在 http://localhost:8080。详细接口工作台仍在 http://localhost:8090/ui/。
+
+界面体验说明见 [reports/ui_experience.md](reports/ui_experience.md)。旧实现审计报告保留为历史记录，当前数据源以本节为准。
 
 ## 请求头约定
 

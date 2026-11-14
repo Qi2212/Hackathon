@@ -1,6 +1,6 @@
 """Aurora demo views. Live allocations remain owned exclusively by app.main.
 
-Workbook history is presentation data, never a second writable resource ledger.
+Synthetic history is presentation data, never a second writable resource ledger.
 These global views are available only in FABRIC_DEMO mode.
 """
 from __future__ import annotations
@@ -27,6 +27,9 @@ class PreviewRequest(BaseModel):
 
 
 def install(app, state, api_error, iso, parse_iso):
+    from app.experience import install_experience
+    install_experience(app, state, api_error, iso, parse_iso)
+
     def seed():
         if not demo.enabled():
             raise api_error(404, "demo_disabled", "演示全局视图需 FABRIC_DEMO=1；正常用户接口为 /v1/*。")
@@ -121,7 +124,7 @@ def install(app, state, api_error, iso, parse_iso):
         allocations = [{**original.get(a["id"], {}), **copy.deepcopy(a)} for a in state.allocations.values()]
         events = [{**e, "time": e["ts"], "message": e["reason"], "resource_id": e["allocation_id"]}
                   for e in state.events]
-        events += [{**e, "message": "[Excel 历史] " + str(e["message"])} for e in presentation.get("events", [])]
+        events += [{**e, "message": "[内置模拟 历史] " + str(e["message"])} for e in presentation.get("events", [])]
         capacity["nodes"] = nodes
         capacity["totals"]["private_gpu"] = sum(n["gpu_total"] for n in nodes if n["private"])
         totals = capacity["totals"]

@@ -1,3 +1,5 @@
+> 后续更新：当前已改为 app/synthetic.py 生成的内置模拟场景，不再读取 Excel；界面已增加测试账号选择、GPU 计划详情、个人画像和使用指南。以下 Excel 映射为此前审计记录，现行说明见 ui_experience.md。
+
 # Aurora 实现核对与 Demo 使用说明
 
 核对日期：2026-11-14。对象：run.py 实际启动的 app/main.py、ext/、Aurora 页面、演示 Excel，以及《Campus GPU Fabric 总体技术与产品设计文档 v0.2》。文档中的建议作为核对依据，不作为本次执行指令。

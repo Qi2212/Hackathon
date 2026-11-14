@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env")
 
-# 演示模式：从 app/data/demo_seed.json 回放 29 节点 / 84 卡的占用快照。
+# 演示模式：从 app/data/demo_seed.json 回放 12 节点 / 34 卡的占用快照。
 # 没有该文件时自动退回 resources.json。
 os.environ.setdefault("FABRIC_DEMO", "1")
 

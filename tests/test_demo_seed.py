@@ -1,4 +1,4 @@
-"""演示快照与总览接入测试（不依赖 Excel 解析耗时）。"""
+"""演示快照与总览接入测试（内置合成场景）。"""
 
 from __future__ import annotations
 
@@ -43,15 +43,15 @@ def capacity_from_seed() -> dict:
     }
 
 
-def test_seed_inventory_matches_excel_snapshot():
+def test_seed_inventory_is_consistent_synthetic_scene():
     capacity = capacity_from_seed()
-    assert capacity["totals"]["nodes"] == 29
-    assert capacity["totals"]["gpu_total"] == 84
-    assert capacity["totals"]["gpu_free"] == 8
-    assert capacity["totals"]["gpu_unavailable"] == 1
+    assert capacity["totals"]["nodes"] == 12
+    assert capacity["totals"]["gpu_total"] == 34
+    assert capacity["totals"]["gpu_free"] == 10
+    assert capacity["totals"]["gpu_unavailable"] == 2
     assert capacity["totals"]["gpu_contributor_held"] == 2
-    assert capacity["totals"]["gpu_allocated"] == 73
-    assert sum(1 for allocation in SEED["allocations"] if allocation["state"] == "Pending") == 40
+    assert capacity["totals"]["gpu_allocated"] == 20
+    assert sum(1 for allocation in SEED["allocations"] if allocation["state"] == "Pending") == 12
 
 
 def test_seed_passes_invariants():
@@ -81,7 +81,7 @@ def test_overview_uses_demo_kpis(monkeypatch):
         "util_now",
         "pending_approvals",
     ]
-    assert payload["kpis"][0]["value"] == 84
+    assert payload["kpis"][0]["value"] == 34
 
 
 def test_overview_falls_back_to_capacity_without_demo(monkeypatch):
@@ -89,7 +89,7 @@ def test_overview_falls_back_to_capacity_without_demo(monkeypatch):
     payload = build_overview(capacity_from_seed())
     assert payload["demo"] is False
     assert payload["unit"] == "CNY"
-    assert payload["kpis"][0]["value"] == 84
+    assert payload["kpis"][0]["value"] == 34
 
 
 def test_model_price_and_power_lookup_ignores_spaces(monkeypatch):
