@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Campus GPU Fabric · 工作台</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">GPU</span>
+      <div>
+        <h1>Campus GPU Fabric</h1>
+        <p>任务理解 → 方案对比 → 审批 → 原子绑定 → 结算</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span id="health" class="pill pill-muted">连接中</span>
+      <label class="owner-field">Owner
+        <input id="owner" value="alice" autocomplete="off" spellcheck="false">
+      </label>
+      <button id="refresh" class="btn btn-ghost" type="button">刷新</button>
+    </div>
+  </header>
+
+  <section id="overview" class="overview" aria-label="集群总览"></section>
+
+  <main class="layout">
+    <div class="col-main">
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <h2>1 · 描述任务</h2>
+            <p class="hint">自然语言即可，例如“下周三前用 2 张 A100 微调 7B 模型 6 小时，预算 300 元”。</p>
+          </div>
+          <span id="taskStatus" class="pill pill-muted">未开始</span>
+        </div>
+        <textarea id="taskInput" rows="4" placeholder="描述算力需求、时间、预算与是否可中断"></textarea>
+        <div class="row-actions">
+          <button id="analyzeBtn" class="btn btn-primary" type="button">分析任务</button>
+          <button id="estimateBtn" class="btn" type="button" disabled>估算资源</button>
+          <button id="planBtn" class="btn" type="button" disabled>生成方案</button>
+        </div>
+        <div id="taskSummary" class="summary empty">还没有解析结果</div>
+        <details id="confirmBox" class="subcard" open hidden>
+          <summary>确认或修正关键字段</summary>
+          <div class="form-grid">
+            <label>GPU 张数 <input id="fGpuCount" type="number" min="0" max="16" step="1"></label>
+            <label>GPU 型号（逗号分隔） <input id="fGpuModels" type="text" placeholder="A100, H100"></label>
+            <label>单卡显存 MiB <input id="fMinMem" type="number" min="0" step="1024"></label>
+            <label>时长（小时） <input id="fHours" type="number" min="0" step="0.5"></label>
+            <label>预算（元，可空） <input id="fBudget" type="number" min="0" step="10"></label>
+            <label>截止时间（可空） <input id="fDeadline" type="date"></label>
+          </div>
+          <button id="confirmBtn" class="btn" type="button">保存并确认</button>
+        </details>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <h2>2 · 方案对比</h2>
+            <p class="hint">四个策略基于同一份容量快照；最终以 A 的原子绑定结果为准。</p>
+          </div>
+          <span id="planStatus" class="pill pill-muted">未生成</span>
+        </div>
+        <div id="planMeta" class="plan-meta"></div>
+        <div id="planOptions" class="plan-grid"></div>
+        <div id="forecasts" class="forecast-row"></div>
+
+        <div class="decision-bar">
+          <label class="inline">决策策略
+            <select id="strategySelect" disabled></select>
+          </label>
+          <label class="inline checkbox"><input id="requireApproval" type="checkbox"> 需要 Owner 审批</label>
+          <button id="decisionBtn" class="btn btn-primary" type="button" disabled>创建决策</button>
+        </div>
+        <div id="decisionBox" class="summary empty">尚未创建决策</div>
+        <div id="submitBar" class="row-actions" hidden>
+          <button id="submitBtn" class="btn btn-primary" type="button">提交到 A</button>
+          <button id="settleBtn" class="btn" type="button" disabled>结算用量</button>
+          <span id="submitStatus" class="pill pill-muted">未提交</span>
+        </div>
+        <div id="approvalForm" class="subcard" hidden>
+          <h3>发起 Owner 审批</h3>
+          <div class="form-grid">
+            <label>Owner 身份 <input id="approvalOwner" type="text" placeholder="lab-owner"></label>
+            <label>预约开始 <input id="approvalStart" type="datetime-local"></label>
+            <label>预约结束 <input id="approvalEnd" type="datetime-local"></label>
+            <label>备注 <input id="approvalNote" type="text" placeholder="夜间空闲时段"></label>
+          </div>
+          <button id="createApprovalBtn" class="btn" type="button">提交审批申请</button>
+        </div>
+      </article>
+    </div>
+
+    <aside class="col-side">
+      <article class="card">
+        <div class="card-head">
+          <h2>集群容量</h2>
+          <span id="snapshotTime" class="pill pill-muted">-</span>
+        </div>
+        <div id="capacity" class="capacity"></div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <h2>Owner 审批</h2>
+            <p class="hint">演示模式下按钮以该审批的 Owner 身份执行。</p>
+          </div>
+          <button id="refreshApprovals" class="btn btn-ghost btn-sm" type="button">刷新</button>
+        </div>
+        <div id="approvalList" class="approval-list empty">暂无待审批</div>
+      </article>
+
+      <article class="card">
+        <div class="card-head">
+          <h2>信用与结算</h2>
+          <span id="accountOwner" class="pill pill-muted">alice</span>
+        </div>
+        <div id="account" class="account"></div>
+        <details class="subcard">
+          <summary>登记贡献</summary>
+          <div class="form-grid">
+            <label>GPU 型号 <input id="cModel" type="text" placeholder="H100"></label>
+            <label>张数 <input id="cCount" type="number" min="1" step="1" value="1"></label>
+            <label>小时 <input id="cHours" type="number" min="0.5" step="0.5" value="1"></label>
+            <label>备注 <input id="cNote" type="text" placeholder="实验室机器"></label>
+          </div>
+          <button id="contributeBtn" class="btn" type="button">登记</button>
+        </details>
+        <div id="billing" class="billing empty">暂无消费记录</div>
+      </article>
+    </aside>
+  </main>
+
+  <footer class="logbar">
+    <span>请求日志</span>
+    <ol id="log"></ol>
+  </footer>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

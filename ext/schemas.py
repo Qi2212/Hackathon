@@ -13,11 +13,11 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CONTRACT_VERSION = "1.0.0"
+CONTRACT_VERSION = "1.5.0"
 
 SNAPSHOT_SOURCE = "fabric:/v1/capacity"
 
@@ -130,6 +130,8 @@ class ResourceSnapshot(BaseModel):
     `fetched_at` 是 B 进程的真实墙钟时间，两者不可混用。
     """
 
+    model_config = ConfigDict(protected_namespaces=())
+
     contract_version: str = CONTRACT_VERSION
     source: str = SNAPSHOT_SOURCE
     observed_at: str
@@ -241,6 +243,7 @@ class WorkloadEstimate(BaseModel):
     basis: Literal["history", "heuristic", "llm", "user"] = "heuristic"
     sample_size: int = 0
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    notes: list[str] = Field(default_factory=list)
     created_at: str
 
 
@@ -280,6 +283,7 @@ class StrategyPlan(BaseModel):
     snapshot_observed_at: str
     options: list[StrategyOption] = Field(default_factory=list)
     recommended: StrategyName | None = None
+    notes: list[str] = Field(default_factory=list)
     created_at: str
 
 
@@ -327,6 +331,7 @@ class PlacementDecision(BaseModel):
 
     contract_version: str = CONTRACT_VERSION
     decision_id: str
+    plan_id: str | None = None
     task_id: str
     strategy: StrategyName
     allocation: AllocationRequestBody
@@ -368,6 +373,93 @@ class Approval(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# 贡献 / 使用 / 信用 / 结算
+# ---------------------------------------------------------------------------
+
+
+class ContributionRecord(BaseModel):
+    contract_version: str = CONTRACT_VERSION
+    contribution_id: str
+    owner: str
+    gpu_model: str
+    gpu_count: int = Field(ge=1)
+    hours: float = Field(gt=0)
+    price_cny_per_hour: float = Field(ge=0)
+    credit_cny: float = Field(ge=0)
+    note: str = ""
+    created_at: str
+
+
+class BillingRecord(BaseModel):
+    contract_version: str = CONTRACT_VERSION
+    record_id: str
+    decision_id: str
+    allocation_id: str
+    owner: str
+    gpu_ids: list[str] = Field(default_factory=list)
+    gpu_models: list[str] = Field(default_factory=list)
+    gpu_count: int = Field(ge=0)
+    hours: float = Field(ge=0)
+    cost_cny: float = Field(ge=0)
+    status: Literal["settled"] = "settled"
+    basis: str = "terminal_event"
+    settled_at: str
+
+
+class Account(BaseModel):
+    contract_version: str = CONTRACT_VERSION
+    owner: str
+    balance_cny: float = 0.0
+    contributed_cny: float = 0.0
+    consumed_cny: float = 0.0
+    contributed_gpu_hours: float = 0.0
+    consumed_gpu_hours: float = 0.0
+    updated_at: str
+
+
+class ContributionRequest(BaseModel):
+    gpu_model: str = Field(min_length=1)
+    gpu_count: int = Field(ge=1, le=64)
+    hours: float = Field(gt=0, le=8760)
+    note: str = ""
+
+
+# ---------------------------------------------------------------------------
+# 可用性观测与预测
+# ---------------------------------------------------------------------------
+
+AvailabilityTrend = Literal["rising", "flat", "falling", "unknown"]
+
+
+class AvailabilityObservation(BaseModel):
+    contract_version: str = CONTRACT_VERSION
+    observation_id: str
+    node_id: str
+    observed_at: str
+    captured_at: str
+    state: NodeState
+    gpu_total: int = Field(ge=0)
+    gpu_free: int = Field(ge=0)
+    gpu_allocated: int = Field(ge=0)
+    contributed: bool = False
+
+
+class AvailabilityForecast(BaseModel):
+    contract_version: str = CONTRACT_VERSION
+    node_id: str
+    observed_at: str
+    generated_at: str
+    horizon_seconds: int = Field(ge=60, le=86400)
+    availability_score: float = Field(ge=0.0, le=1.0)
+    interruption_risk: float = Field(ge=0.0, le=1.0)
+    expected_free_gpus: float = Field(ge=0.0)
+    trend: AvailabilityTrend = "unknown"
+    confidence: float = Field(ge=0.0, le=1.0)
+    sample_size: int = Field(ge=0)
+    reasons: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # /ext/v1/contracts 暴露的清单
 # ---------------------------------------------------------------------------
 
@@ -380,4 +472,63 @@ CONTRACTS: dict[str, type[BaseModel]] = {
     "PlacementDecision": PlacementDecision,
     "AllocationRequestBody": AllocationRequestBody,
     "Approval": Approval,
+    "ContributionRecord": ContributionRecord,
+    "BillingRecord": BillingRecord,
+    "Account": Account,
+    "AvailabilityObservation": AvailabilityObservation,
+    "AvailabilityForecast": AvailabilityForecast,
 }
+
+
+# ---------------------------------------------------------------------------
+# HTTP 层请求体（不对外作为数据契约发布）
+# ---------------------------------------------------------------------------
+
+
+class AnalyzeTaskRequest(BaseModel):
+    input: str = Field(min_length=1, max_length=4000)
+    known_models: list[str] | None = None
+    refresh_snapshot: bool = True
+
+
+class ConfirmTaskRequest(BaseModel):
+    answers: dict[str, Any] = Field(default_factory=dict)
+    confirm: bool = False
+
+
+class DecisionRequest(BaseModel):
+    strategy: StrategyName | None = None
+    ttl_seconds: int = Field(default=3600, ge=30, le=3600)
+    priority: int = Field(default=50, ge=0, le=100)
+    require_approval: bool = False
+
+
+class SubmitDecisionRequest(BaseModel):
+    idempotency_key: str | None = Field(default=None, max_length=128)
+
+
+class DecisionSubmission(BaseModel):
+    """把 PlacementDecision 提交给 A 之后的真实结果（201/202/409...）。"""
+
+    status_code: int
+    accepted: bool
+    queued: bool
+    idempotency_key: str
+    allocation: dict[str, Any] | None = None
+    error: dict[str, Any] | None = None
+    submitted_at: str
+
+
+class CreateApprovalRequest(BaseModel):
+    owner_id: str = Field(min_length=1)
+    window_start: str | None = None
+    window_end: str | None = None
+    note: str = ""
+
+
+class DecideApprovalRequest(BaseModel):
+    action: Literal["accept", "reject", "counter"]
+    counteroffer: str | None = None
+    note: str = ""
+    window_start: str | None = None
+    window_end: str | None = None

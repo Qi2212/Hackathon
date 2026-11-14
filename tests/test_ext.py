@@ -193,7 +193,8 @@ def test_contracts_expose_p0_schemas(ext):
     for name in ("TaskSpec", "WorkloadEstimate", "ResourceSnapshot", "StrategyPlan", "PlacementDecision", "Approval"):
         assert name in schemas
     task_spec = schemas["TaskSpec"]
-    assert {"task_id", "raw_input", "resources", "provenance", "missing", "status"} <= set(task_spec["required"])
+    assert {"task_id", "raw_input", "created_at"} <= set(task_spec["required"])
+    assert {"resources", "provenance", "missing", "status"} <= set(task_spec["properties"])
     decision = schemas["PlacementDecision"]
     assert {"decision_id", "task_id", "strategy", "allocation", "node_id"} <= set(decision["required"])
 

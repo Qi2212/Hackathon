@@ -8,6 +8,7 @@ in the following steps.
 from __future__ import annotations
 
 import copy
+import json
 import os
 import time
 import uuid
@@ -22,7 +23,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app import __version__, schemas as s
+from app import __version__, demo, schemas as s
 from app.resources import load_resources
 
 TEST_KEY_DEFAULT = "campus-test-key"
@@ -38,7 +39,8 @@ CONTRIBUTOR = "contributor"
 PROCESS_STARTED_AT = datetime.now(timezone.utc)
 PROCESS_STARTED_MONO = time.monotonic()
 
-INITIAL_RESOURCES = load_resources()
+DEMO_SEED = demo.load_seed() if demo.enabled() else None
+INITIAL_RESOURCES = DEMO_SEED["nodes"] if DEMO_SEED else load_resources()
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +54,10 @@ def uid(prefix: str) -> str:
 
 def iso(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def parse_iso(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 class ApiError(Exception):
@@ -74,11 +80,20 @@ class SkeletonState:
 
     def reset(self) -> None:
         self.offset_seconds = 0.0
+        self.base_time = PROCESS_STARTED_AT
         self.nodes: list[dict[str, Any]] = copy.deepcopy(INITIAL_RESOURCES)
+        for node in self.nodes:
+            node["labels"]["fabric_node_id"] = node["node_id"]
         self.allocations: dict[str, dict[str, Any]] = {}
         self.jobs: dict[str, dict[str, Any]] = {}
         self.events: list[dict[str, Any]] = []
         self.faults: dict[str, dict[str, Any]] = {}
+        self.idempotency: dict[tuple[str, str], dict[str, Any]] = {}
+        if DEMO_SEED:
+            self.base_time = demo.snapshot_time() or PROCESS_STARTED_AT
+            self.allocations = {
+                item["id"]: copy.deepcopy(item) for item in DEMO_SEED.get("allocations", [])
+            }
 
     # -- clock ------------------------------------------------------------
 
@@ -87,7 +102,7 @@ class SkeletonState:
 
     def now(self) -> datetime:
         elapsed = self.uptime_seconds() + self.offset_seconds
-        return PROCESS_STARTED_AT + timedelta(seconds=elapsed)
+        return self.base_time + timedelta(seconds=elapsed)
 
     # -- lookups ----------------------------------------------------------
 
@@ -105,15 +120,24 @@ class SkeletonState:
         gpus = [g for g in node["gpus"] if g["held_by"] is None]
         if gpu_req.model not in ("", "any"):
             gpus = [g for g in gpus if g["model"] == gpu_req.model]
+        gpus = [g for g in gpus if g["memory_mib"] >= gpu_req.memory_mib
+                and (gpu_req.profile is None or g.get("profile") == gpu_req.profile)]
         return gpus
 
-    def find_placement(self, gpu_req: s.GPURequest) -> tuple[dict[str, Any], list[dict[str, Any]]] | None:
-        if gpu_req.count == 0:
-            node = next((n for n in self.nodes if n["state"] == "Ready"), None)
-            return (node, []) if node else None
+    def find_placement(self, gpu_req: s.GPURequest, request: s.ResourceRequest | None = None,
+                       selector: dict[str, str] | None = None) -> tuple[dict[str, Any], list[dict[str, Any]]] | None:
         for node in self.nodes:
             if node["state"] != "Ready":
                 continue
+            if any(node["labels"].get(k) != v for k, v in (selector or {}).items()):
+                continue
+            if request:
+                used = [a["request"] for a in self.allocations.values()
+                        if a["state"] in ("Allocated", "Running", "PreemptRequested")
+                        and (a.get("placement") or {}).get("node_id") == node["node_id"]]
+                if any(getattr(request, key) + sum(r.get(key, 0) for r in used) > node[key]
+                       for key in ("cpu_millicores", "memory_mib", "ephemeral_storage_mib")):
+                    continue
             candidates = self.free_gpus(node, gpu_req)
             if len(candidates) >= gpu_req.count:
                 return node, candidates[: gpu_req.count]
@@ -136,6 +160,62 @@ class SkeletonState:
             found = self.gpu(gpu_id)
             if found and found[1]["held_by"] == alloc["id"]:
                 found[1]["held_by"] = None
+
+    def process_due_preemptions(self) -> None:
+        """Logical clock advanced: return every GPU whose notice deadline passed."""
+        now = self.now()
+        due = []
+        for alloc in self.allocations.values():
+            info = alloc.get("preemption")
+            if alloc["state"] != "PreemptRequested" or not info:
+                continue
+            try:
+                deadline = parse_iso(info["deadline"])
+            except (KeyError, ValueError):
+                continue
+            if now >= deadline:
+                due.append((deadline, alloc))
+        for deadline, alloc in sorted(due, key=lambda item: item[0]):
+            info = alloc["preemption"]
+            if info.get("checkpoint_status") == "waiting":
+                info["checkpoint_status"] = "timeout"
+                self.emit(
+                    "checkpoint.timeout",
+                    allocation_id=alloc["id"],
+                    owner=alloc["owner"],
+                    from_state="PreemptRequested",
+                    to_state="PreemptRequested",
+                    reason="checkpoint did not complete before the notice deadline",
+                    detail={"demand_id": info["demand_id"]},
+                )
+            try:
+                requested_at = parse_iso(info["requested_at"])
+                info["lost_seconds"] = round((deadline - requested_at).total_seconds(), 3)
+            except (KeyError, ValueError):
+                info["lost_seconds"] = 0.0
+            gpu_ids = list((alloc.get("placement") or {}).get("gpu_ids") or info.get("gpu_ids") or [])
+            self.release(alloc)
+            alloc["state"] = "Preempted"
+            alloc["expires_at"] = None
+            self.emit(
+                "allocation.preempted",
+                allocation_id=alloc["id"],
+                owner=alloc["owner"],
+                from_state="PreemptRequested",
+                to_state="Preempted",
+                reason="notice deadline reached",
+                detail={
+                    "demand_id": info["demand_id"],
+                    "gpu_ids": gpu_ids,
+                    "checkpoint_status": info.get("checkpoint_status"),
+                },
+            )
+            self.emit(
+                "gpu.returned_to_pool",
+                owner="system",
+                reason="contributor demand",
+                detail={"demand_id": info["demand_id"], "gpu_ids": gpu_ids},
+            )
 
     # -- events -----------------------------------------------------------
 
@@ -380,6 +460,20 @@ async def create_allocation(
             f"X-Owner '{owner}' conflicts with body owner '{body.owner}'",
         )
 
+    fingerprint = json.dumps(body.model_dump(), sort_keys=True, separators=(",", ":"))
+    cache_key = (owner, idempotency_key) if idempotency_key else None
+    if cache_key is not None:
+        cached = state.idempotency.get(cache_key)
+        if cached is not None:
+            if cached["fingerprint"] != fingerprint:
+                raise ApiError(
+                    409,
+                    "idempotency_conflict",
+                    "Idempotency-Key was reused with a different request body",
+                )
+            response.status_code = cached["status_code"]
+            return copy.deepcopy(cached["allocation"])
+
     now = state.now()
     allocation = {
         "id": uid("alloc"),
@@ -391,6 +485,7 @@ async def create_allocation(
         "preemptible": body.preemptible,
         "preemption_policy": body.preemption_policy.model_dump(),
         "request": body.request.model_dump(),
+        "node_selector": dict(body.node_selector),
         "placement": None,
         "created_at": iso(now),
         "expires_at": None,
@@ -410,9 +505,15 @@ async def create_allocation(
         },
     )
 
-    placement = state.find_placement(body.request.gpu)
+    placement = state.find_placement(body.request.gpu, body.request, body.node_selector)
     if placement is None:
         response.status_code = 202
+        if cache_key is not None:
+            state.idempotency[cache_key] = {
+                "fingerprint": fingerprint,
+                "status_code": 202,
+                "allocation": copy.deepcopy(allocation),
+            }
         return allocation
 
     node, gpus = placement
@@ -427,6 +528,12 @@ async def create_allocation(
         detail={"node_id": node["node_id"], "gpu_ids": allocation["placement"]["gpu_ids"]},
     )
     response.status_code = 201
+    if cache_key is not None:
+        state.idempotency[cache_key] = {
+            "fingerprint": fingerprint,
+            "status_code": 201,
+            "allocation": copy.deepcopy(allocation),
+        }
     return allocation
 
 
@@ -527,7 +634,8 @@ async def resume_allocation(
         raise ApiError(409, "restart_budget_exhausted", "max_restarts already consumed")
 
     previous = alloc["state"]
-    placement = state.find_placement(s.GPURequest(**alloc["request"]["gpu"]))
+    placement = state.find_placement(s.GPURequest(**alloc["request"]["gpu"]),
+                                     s.ResourceRequest(**alloc["request"]), alloc.get("node_selector"))
     if placement is None:
         alloc["state"] = "Pending"
         alloc["placement"] = None
@@ -704,6 +812,7 @@ async def advance_clock(
 ) -> dict[str, Any]:
     require_test_key(x_test_key)
     state.offset_seconds += body.advance_seconds
+    state.process_due_preemptions()
     return {"logical_time": iso(state.now()), "offset_seconds": round(state.offset_seconds, 3)}
 
 
@@ -775,6 +884,25 @@ async def set_node_state(
         reason="test control",
         detail={"node_id": body.node_id},
     )
+    if body.state == "NotReady":
+        for alloc in state.allocations.values():
+            if alloc["state"] not in {"Allocated", "Running", "PreemptRequested"}:
+                continue
+            if (alloc.get("placement") or {}).get("node_id") != node["node_id"]:
+                continue
+            previous = alloc["state"]
+            state.release(alloc)
+            alloc["state"] = "Evicted"
+            alloc["expires_at"] = None
+            state.emit(
+                "allocation.evicted",
+                allocation_id=alloc["id"],
+                owner=alloc["owner"],
+                from_state=previous,
+                to_state="Evicted",
+                reason="node entered NotReady",
+                detail={"node_id": node["node_id"]},
+            )
     return {
         "node_id": node["node_id"],
         "state": node["state"],
@@ -792,3 +920,9 @@ async def set_fault(body: s.FaultConfig, x_test_key: str | None = Header(default
     require_test_key(x_test_key)
     state.faults[body.operation] = body.model_dump()
     return Response(status_code=204)
+
+
+# Product views and extension gateway do not change the frozen API routes.
+from app.presentation import install as install_presentation
+
+install_presentation(app, state, ApiError, iso, parse_iso)

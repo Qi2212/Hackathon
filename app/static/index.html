@@ -6,6 +6,7 @@
   <meta name="description" content="Campus GPU Fabric - 可回收、可解释的校园 GPU 算力互助平台">
   <title>Aurora · Campus GPU Fabric</title>
   <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/live.css">
 </head>
 <body>
   <div class="app-shell">
@@ -18,6 +19,9 @@
         <button class="nav-item active" data-route="overview"><span class="nav-icon">⌁</span><span>资源总览</span></button>
         <button class="nav-item" data-route="submit"><span class="nav-icon">＋</span><span>智能提交</span></button>
         <button class="nav-item" data-route="tasks"><span class="nav-icon">◫</span><span>我的任务</span></button>
+        <button class="nav-item" data-route="queues"><span class="nav-icon">≋</span><span>队列与预测</span></button>
+        <button class="nav-item" data-route="economy"><span class="nav-icon">¥</span><span>来源与收益</span></button>
+        <button class="nav-item" data-route="groups"><span class="nav-icon">⌘</span><span>资源小组</span></button>
         <button class="nav-item" data-route="approvals"><span class="nav-icon">✓</span><span>私有卡审批</span><em id="approvalCount">0</em></button>
         <button class="nav-item" data-route="mount"><span class="nav-icon">⛓</span><span>服务器挂载</span></button>
         <button class="nav-item" data-route="lab"><span class="nav-icon">⌬</span><span>实验室画像</span></button>
@@ -25,7 +29,7 @@
       </nav>
       <div class="sidebar-note">
         <span class="pulse"></span>
-        <div><b>控制面正常</b><small>账本不变量已通过</small></div>
+        <div><b>本机 Demo</b><small>内存状态 · 重启后恢复快照</small></div>
       </div>
       <div class="user-card">
         <span class="avatar">林</span>
@@ -48,6 +52,11 @@
       </header>
 
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      <div class="demo-toolbar"><div><b id="connectionStatus">连接资源服务…</b><small id="extensionStatus">连接任务解析与策略服务…</small></div><label>演示身份 <input id="ownerInput" aria-label="X-Owner" value="u-20260309"></label><button id="ownerApply" class="button ghost">切换</button><label>测试密钥 <input id="testKey" type="password" value="campus-test-key" aria-label="测试密钥"></label></div>
+
+      <section class="page" data-page="queues"><div class="section-heading"><div><p class="eyebrow">QUEUE SIMULATION</p><h2>队列、我的位置与时间预测</h2><p class="subcopy" id="queueNote"></p><p class="subcopy">高亮格为当前身份的任务。格位为模拟排队顺序，卡槽 ID 显示在格内；预测不构成资源预留。</p></div></div><div id="queueGrid"></div></section>
+      <section class="page" data-page="economy"><div class="section-heading"><div><p class="eyebrow">DEMO ECONOMY</p><h2>资源从哪里来，收益到哪里去</h2><p class="subcopy">以下为 Excel 预制历史与积分口径，不包含现场提交任务的实时结算。实时贡献登记与结算见扩展工作台（默认 http://localhost:8090/ui/）。</p></div></div><article class="content-card"><h3>按公共 / 实验室 / 个人来源</h3><div id="sourceRevenue"></div></article><article class="content-card"><h3>贡献者收益</h3><div id="providerRevenue"></div></article><article class="content-card"><h3>平台收益拆分</h3><div id="platformRevenue"></div></article></section>
+      <section class="page" data-page="groups"><div class="section-heading"><div><p class="eyebrow">RESOURCE GROUPS</p><h2>小组与资源归属</h2><p class="subcopy">Excel 预制小组展示。当前未实现创建 / 邀请 / 成员权限，以及实验室 → 小组 → 大厅的调度策略；以下规则是配置说明，尚未成为服务端权限约束。</p></div></div><div id="groupGrid" class="group-grid"></div></section>
 
       <section class="page active" data-page="overview">
         <div class="hero-grid">
@@ -69,10 +78,10 @@
           </article>
 
           <div class="metric-grid">
-            <article class="metric-card accent-cyan"><div class="metric-top"><span>GPU 利用率</span><em>实时</em></div><strong id="metricUtil">--%</strong><div class="mini-bars" id="utilBars"></div><p>较昨日同时段 <b>+8.4%</b></p></article>
+            <article class="metric-card accent-cyan"><div class="metric-top"><span>GPU 利用率</span><em>实时容量</em></div><strong id="metricUtil">--%</strong><div class="mini-bars" id="utilBars"></div><p>下方曲线来自 Excel 历史快照</p></article>
             <article class="metric-card"><div class="metric-top"><span>运行中任务</span><em class="cyan-dot">●</em></div><strong id="metricRunning">--</strong><p>其中 <b id="metricCheckpoint">0</b> 个支持检查点</p><a class="route-link" data-route="tasks">查看任务 →</a></article>
-            <article class="metric-card accent-yellow"><div class="metric-top"><span>等待我审批</span><em>需处理</em></div><strong id="metricApprovals">--</strong><p>最早等待 <b>6 分钟</b></p><a class="route-link" data-route="approvals">立即审批 →</a></article>
-            <article class="metric-card"><div class="metric-top"><span>即将到期</span><em>30 min</em></div><strong id="metricExpiring">--</strong><p>租约到期将自动归还</p><a class="route-link" data-route="tasks">查看租约 →</a></article>
+            <article class="metric-card accent-yellow"><div class="metric-top"><span>当前身份关联的待审批</span><em>实时</em></div><strong id="metricApprovals">--</strong><p>历史审批单独标注为快照</p><a class="route-link" data-route="approvals">查看审批 →</a></article>
+            <article class="metric-card"><div class="metric-top"><span>即将到期</span><em>30 min</em></div><strong id="metricExpiring">--</strong><p>TTL 自动释放尚待补齐</p><a class="route-link" data-route="tasks">查看租约 →</a></article>
           </div>
         </div>
 
@@ -101,34 +110,37 @@
                 <div class="field"><label for="memoryMib">最低显存</label><select id="memoryMib" name="memory_mib"><option value="12000">12 GB</option><option value="20000" selected>20 GB</option><option value="40000">40 GB</option><option value="80000">80 GB</option></select></div>
                 <div class="field"><label for="ttlSeconds">预计使用</label><select id="ttlSeconds" name="ttl_seconds"><option value="900">15 分钟</option><option value="1800" selected>30 分钟</option><option value="3600">1 小时</option></select></div>
                 <div class="field full"><label for="deadline">截止时间</label><input id="deadline" name="deadline" type="datetime-local"></div>
-                <label class="toggle-row full"><span><b>支持 Checkpoint</b><small>被贡献者收回时自动保存并寻找替代卡</small></span><input id="checkpointable" type="checkbox" checked><i></i></label>
+                <div class="field full"><label for="strategySelect">提交策略</label><select id="strategySelect"><option value="balanced">均衡 Balanced</option><option value="economy">经济 Economy</option><option value="fast">最快 Fast</option><option value="stable">稳定 Stable</option></select></div>
+                <label class="toggle-row full"><span><b>支持 Checkpoint</b><small>声明任务支持检查点；当前演示需手动记录与恢复</small></span><input id="checkpointable" type="checkbox" checked><i></i></label>
                 <div class="form-actions full"><button type="button" class="button ghost" id="estimateBtn">只做预估</button><button class="button primary" type="submit">AI 匹配并提交 →</button></div>
               </form>
+              <p class="subcopy">提交身份以顶部 X-Owner 为准；此处实验室身份选项尚未接入权限。界面先生成条件排队预测，再由扩展服务对当前空闲资源生成四策略。示例 Job 使用模拟命令，不运行真实 GPU 训练。</p>
+              <div id="strategyResults" class="strategy-results"></div>
             </article>
           </div>
           <aside class="strategy-panel dark-panel">
             <p class="eyebrow lime">PLACEMENT BRAIN</p><h2>匹配策略画像</h2>
             <div class="brain-lines"><span style="--p:84%"><b>显存适配</b><i></i><em>84</em></span><span style="--p:92%"><b>稳定性</b><i></i><em>92</em></span><span style="--p:68%"><b>成本收益</b><i></i><em>68</em></span><span style="--p:76%"><b>DDL 风险</b><i></i><em>76</em></span></div>
-            <div class="strategy-note"><span>AI</span><p>临近截止时间时，策略会提高低回收风险节点的权重；私有卡命中后先进入实验室审批，不会提前占卡。</p></div>
+            <div class="strategy-note"><span>AI</span><p>预估不会占卡。以下为 GPU 队列条件模拟；实际提交使用扩展服务的四策略。组内优先与个人权限尚未接入。</p></div>
             <div id="ranking" class="ranking-list"><div class="empty-state">提交后在此解释每张候选卡为什么被选择。</div></div>
           </aside>
         </div>
       </section>
 
       <section class="page" data-page="tasks">
-        <div class="section-heading"><div><p class="eyebrow">MY WORKLOADS</p><h2>任务与租约</h2><p class="subcopy">每个状态都附带原因；资源到期、故障或回收后不会留下幽灵占用。</p></div><div class="segmented"><button class="active">全部</button><button>运行中</button><button>等待中</button><button>已结束</button></div></div>
+        <div class="section-heading"><div><p class="eyebrow">MY WORKLOADS</p><h2>任务与租约</h2><p class="subcopy">状态来自资源接口；TTL 自动释放、Pending 自动派发和 Job 自动完成仍待补齐。</p></div><div class="segmented"><button class="active">全部</button><button>运行中</button><button>等待中</button><button>已结束</button></div></div>
         <div class="task-grid" id="taskGrid"></div>
       </section>
 
       <section class="page" data-page="approvals">
-        <div class="section-heading"><div><p class="eyebrow">PRIVATE GPU GATE</p><h2>私有卡审批台</h2><p class="subcopy">贡献者始终拥有最后决定权。批准后才会原子扣减资源账本。</p></div><span class="sla-pill">平均审批 8 min</span></div>
+        <div class="section-heading"><div><p class="eyebrow">PRIVATE GPU GATE</p><h2>私有卡审批台</h2><p class="subcopy">贡献者始终拥有最后决定权。批准后由申请人确认提交，实际绑定以资源接口结果为准。</p></div><span class="sla-pill">现场审批与历史快照分开</span></div>
         <div class="approval-layout"><div id="approvalList" class="approval-list"></div><aside class="profile-card" id="approvalProfile"><div class="empty-state">选择一条申请，查看任务与实验室画像。</div></aside></div>
       </section>
 
       <section class="page" data-page="mount">
         <div class="split-page mount-layout">
           <article class="content-card form-card">
-            <p class="eyebrow">CONTRIBUTE CAPACITY</p><h2>挂载一台私有服务器</h2><p class="subcopy">Agent 只上报资源和心跳；贡献者可随时发起收回，平台负责通知、检查点和账本清理。</p>
+            <p class="eyebrow">CONTRIBUTE CAPACITY / PLANNED</p><h2>挂载一台私有服务器</h2><p class="subcopy">此页为规划界面，尚未实现 Agent 注册、心跳和硬件自检。Demo 请修改 Excel 的 nodes / gpus 后重新生成种子；不会真实连接服务器。</p>
             <form id="mountForm">
               <div class="field"><label>所属实验室</label><select name="lab_id"><option value="lab-vision">视觉智能实验室</option><option value="lab-nlp">自然语言处理实验室</option><option value="lab-robot">机器人实验室</option></select></div>
               <div class="field"><label>主机名</label><input name="hostname" value="vision-rtx-a02" required></div>
@@ -151,15 +163,15 @@
       <section class="page" data-page="lab">
         <div class="section-heading"><div><p class="eyebrow">LAB INTELLIGENCE</p><h2>贡献收益与使用画像</h2><p class="subcopy">不是给实验室贴标签，而是让资源匹配理解“什么时候最忙、什么任务更合适”。</p></div><select class="header-select" id="labSelect"><option value="lab-nlp">自然语言处理实验室</option><option value="lab-vision">视觉智能实验室</option><option value="lab-robot">机器人实验室</option></select></div>
         <div class="lab-hero dark-panel"><div><p class="eyebrow lime">CONTRIBUTION RETURN</p><h2 id="labName">自然语言处理实验室</h2><p>本月贡献帮助 31 个任务减少排队，平台会在本实验室 DDL 周期自动提升保留容量。</p></div><div class="earnings"><span><small>可用贡献积分</small><strong id="labCredits">26,780</strong></span><span><small>累计贡献时长</small><strong id="labHours">2,116 h</strong></span><span><small>本月预估收益</small><strong>+ 3,420</strong></span></div></div>
-        <div class="lab-grid"><article class="content-card"><div class="panel-heading"><div><p class="eyebrow">USAGE RHYTHM</p><h3>DDL 使用节律</h3></div><span class="tag">AI 画像</span></div><div class="calendar-heat" id="heatmap"></div><p class="insight" id="labPeak">ACL / EMNLP 前 45 天出现高峰，建议提前预留 2×A100。</p></article><article class="content-card"><div class="panel-heading"><div><p class="eyebrow">CONTRIBUTION</p><h3>近 7 日贡献</h3></div></div><div class="contrib-chart" id="contribChart"></div><div class="chart-labels"><span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span></div></article><article class="content-card lab-policy"><p class="eyebrow">POLICY</p><h3>本实验室资源偏好</h3><dl><div><dt>平均审批</dt><dd id="labSla">8 min</dd></div><div><dt>回收风险</dt><dd id="labRisk">高</dd></div><div><dt>适配任务</dt><dd>LLM / NLP</dd></div><div><dt>优先保护</dt><dd>临近 DDL 的本组任务</dd></div></dl></article></div>
+        <div class="lab-grid"><article class="content-card"><div class="panel-heading"><div><p class="eyebrow">USAGE RHYTHM</p><h3>DDL 使用节律</h3></div><span class="tag">Excel 演示画像</span></div><div class="calendar-heat" id="heatmap"></div><p class="insight" id="labPeak">ACL / EMNLP 前 45 天出现高峰，建议提前预留 2×A100。</p></article><article class="content-card"><div class="panel-heading"><div><p class="eyebrow">CONTRIBUTION</p><h3>近 7 日贡献</h3></div></div><div class="contrib-chart" id="contribChart"></div><div class="chart-labels"><span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>周五</span><span>周六</span><span>周日</span></div></article><article class="content-card lab-policy"><p class="eyebrow">POLICY</p><h3>本实验室资源偏好</h3><dl><div><dt>平均审批</dt><dd id="labSla">8 min</dd></div><div><dt>回收风险</dt><dd id="labRisk">高</dd></div><div><dt>适配任务</dt><dd id="labPreferred">--</dd></div><div><dt>规划保护规则</dt><dd id="labProtect">--</dd></div></dl></article></div>
       </section>
 
       <section class="page" data-page="timeline">
         <div class="section-heading"><div><p class="eyebrow">EXPLAINABLE STATE</p><h2>状态时间线</h2><p class="subcopy">回答“我的任务在哪里、为什么停了、资源什么时候归还”。</p></div><button class="button ghost" id="refreshEvents">刷新事件</button></div>
-        <div class="timeline-layout"><div class="timeline" id="timelineList"></div><aside class="invariant-card dark-panel"><p class="eyebrow lime">LEDGER INVARIANTS</p><h2>账本守卫</h2><ul><li><i>✓</i><span><b>无 GPU 超卖</b><small>每张卡最多一个活跃 allocation</small></span></li><li><i>✓</i><span><b>幂等请求去重</b><small>同 Owner + Key 返回同一分配</small></span></li><li><i>✓</i><span><b>终态不占资源</b><small>Expired / Evicted / Released 已归还</small></span></li><li><i>✓</i><span><b>审批前不扣账</b><small>私有卡批准后才原子放置</small></span></li></ul></aside></div>
+        <div class="timeline-layout"><div class="timeline" id="timelineList"></div><aside class="invariant-card dark-panel"><p class="eyebrow lime">LEDGER INVARIANTS</p><h2>账本规则说明</h2><p class="subcopy">以下是规则说明，不是实时检测结果；私有授权尚未覆盖全部服务端访问路径。</p><ul><li><i>·</i><span><b>无 GPU 超卖</b><small>每张卡最多一个活跃 allocation</small></span></li><li><i>·</i><span><b>幂等请求去重</b><small>同 Owner + Key 返回同一分配</small></span></li><li><i>·</i><span><b>终态不占资源</b><small>Expired / Evicted / Released 已归还</small></span></li><li><i>·</i><span><b>审批前不扣账</b><small>私有卡批准后才原子放置</small></span></li></ul></aside></div>
       </section>
     </main>
   </div>
-  <script src="/static/app.js" defer></script>
+  <script src="/static/live.js" defer></script>
 </body>
 </html>

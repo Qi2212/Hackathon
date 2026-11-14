@@ -365,3 +365,89 @@ def test_invalid_request_shape():
     assert bad.status_code == 400
     assert set(bad.json()) == {"error", "detail", "request_id"}
     assert bad.json()["error"] == "invalid_request"
+
+
+def test_idempotency_replays_first_result_and_rejects_new_body():
+    reset()
+    headers = {**OWNER, "Idempotency-Key": "idem-1"}
+    first = client.post("/v1/allocations", json=allocation_body(), headers=headers)
+    assert first.status_code == 201
+    allocation_id = first.json()["id"]
+
+    replay = client.post("/v1/allocations", json=allocation_body(), headers=headers)
+    assert replay.status_code == 201
+    assert replay.json()["id"] == allocation_id
+    assert len(client.get("/v1/allocations", headers=OWNER).json()) == 1
+
+    conflict = client.post(
+        "/v1/allocations", json=allocation_body(ttl_seconds=600), headers=headers
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["error"] == "idempotency_conflict"
+
+    other_owner = client.post(
+        "/v1/allocations",
+        json=allocation_body(owner="bob", request={
+            "cpu_millicores": 500,
+            "memory_mib": 512,
+            "gpu": {"count": 0, "model": "any"},
+        }),
+        headers={**OTHER, "Idempotency-Key": "idem-1"},
+    )
+    assert other_owner.status_code == 201
+    assert other_owner.json()["id"] != allocation_id
+
+
+def test_notready_evicts_allocations_on_the_node():
+    reset()
+    alloc = create_allocation()
+    node_id = alloc["placement"]["node_id"]
+    changed = client.post(
+        "/_test/node-state", json={"node_id": node_id, "state": "NotReady"}, headers=TEST
+    )
+    assert changed.status_code == 200
+
+    latest = client.get(f"/v1/allocations/{alloc['id']}", headers=OWNER).json()
+    assert latest["state"] == "Evicted"
+    assert latest["expires_at"] is None
+
+    capacity = client.get("/v1/capacity").json()
+    node = next(item for item in capacity["nodes"] if item["node_id"] == node_id)
+    assert all(gpu["held_by"] is None for gpu in node["gpus"])
+    assert capacity["totals"]["gpu_unavailable"] == len(node["gpus"])
+
+
+def test_preemption_returns_gpu_at_the_notice_deadline():
+    reset()
+    alloc = create_allocation()
+    gpu_id = alloc["placement"]["gpu_ids"][0]
+
+    demand = client.post(
+        "/_test/contributor-demand",
+        json={"gpu_ids": [gpu_id], "notice_seconds": 5, "duration_seconds": 30},
+        headers=TEST,
+    )
+    assert demand.status_code == 201
+    waiting = client.get(f"/v1/allocations/{alloc['id']}", headers=OWNER).json()
+    assert waiting["state"] == "PreemptRequested"
+    assert waiting["preemption"]["checkpoint_status"] == "waiting"
+
+    checkpoint = client.post(
+        f"/v1/allocations/{alloc['id']}/checkpoint",
+        json={"status": "ready", "artifact_uri": "s3://demo/ckpt"},
+        headers=OWNER,
+    )
+    assert checkpoint.status_code == 200
+
+    assert client.post("/_test/clock", json={"advance_seconds": 10}, headers=TEST).status_code == 200
+    latest = client.get(f"/v1/allocations/{alloc['id']}", headers=OWNER).json()
+    assert latest["state"] == "Preempted"
+    assert latest["preemption"]["checkpoint_status"] == "ready"
+    assert latest["preemption"]["lost_seconds"] == 5.0
+    assert latest["resume_token"] is None
+
+    capacity = client.get("/v1/capacity").json()
+    gpu = next(
+        item for node in capacity["nodes"] for item in node["gpus"] if item["gpu_id"] == gpu_id
+    )
+    assert gpu["held_by"] is None

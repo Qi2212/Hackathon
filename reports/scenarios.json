@@ -1,0 +1,415 @@
+{
+  "a_url": "http://localhost:8080",
+  "ext_url": "http://localhost:8090",
+  "owner": "replay",
+  "summary": {
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0
+  },
+  "results": [
+    {
+      "name": "basic_lifecycle",
+      "status": "passed",
+      "duration_ms": 92,
+      "error": null,
+      "steps": [
+        {
+          "step": "reset",
+          "status": 204
+        },
+        {
+          "step": "capacity",
+          "status": 200
+        },
+        {
+          "step": "create",
+          "status": 201
+        },
+        {
+          "step": "get",
+          "status": 200
+        },
+        {
+          "step": "after-create:capacity",
+          "status": 200
+        },
+        {
+          "step": "after-create:allocations",
+          "status": 200
+        },
+        {
+          "step": "after-create:invariants",
+          "status": 0,
+          "violations": 0
+        },
+        {
+          "step": "renew",
+          "status": 200
+        },
+        {
+          "step": "renew",
+          "status": 200
+        },
+        {
+          "step": "release",
+          "status": 202
+        },
+        {
+          "step": "get-after-release",
+          "status": 200
+        },
+        {
+          "step": "after-release:capacity",
+          "status": 200
+        },
+        {
+          "step": "after-release:allocations",
+          "status": 200
+        },
+        {
+          "step": "after-release:invariants",
+          "status": 0,
+          "violations": 0
+        }
+      ]
+    },
+    {
+      "name": "idempotency_scope",
+      "status": "passed",
+      "duration_ms": 30,
+      "error": null,
+      "steps": [
+        {
+          "step": "reset",
+          "status": 204
+        },
+        {
+          "step": "capacity",
+          "status": 200
+        },
+        {
+          "step": "first",
+          "status": 201
+        },
+        {
+          "step": "replay-same-body",
+          "status": 201
+        },
+        {
+          "step": "replay-different-body",
+          "status": 409,
+          "error": "idempotency_conflict",
+          "detail": "Idempotency-Key was reused with a different request body"
+        },
+        {
+          "step": "other-owner-same-key",
+          "status": 201
+        },
+        {
+          "step": "after-idempotency:capacity",
+          "status": 200
+        },
+        {
+          "step": "after-idempotency:allocations",
+          "status": 200
+        },
+        {
+          "step": "after-idempotency:invariants",
+          "status": 0,
+          "violations": 0
+        }
+      ]
+    },
+    {
+      "name": "owner_isolation",
+      "status": "passed",
+      "duration_ms": 27,
+      "error": null,
+      "steps": [
+        {
+          "step": "reset",
+          "status": 204
+        },
+        {
+          "step": "create",
+          "status": 201
+        },
+        {
+          "step": "alice-list",
+          "status": 200
+        },
+        {
+          "step": "bob-list",
+          "status": 200
+        },
+        {
+          "step": "bob-get",
+          "status": 404,
+          "error": "allocation_not_found",
+          "detail": "allocation alloc_2a8d085cb0e5 not found"
+        },
+        {
+          "step": "bob-delete",
+          "status": 404,
+          "error": "allocation_not_found",
+          "detail": "allocation alloc_2a8d085cb0e5 not found"
+        },
+        {
+          "step": "after-isolation:capacity",
+          "status": 200
+        },
+        {
+          "step": "after-isolation:allocations",
+          "status": 200
+        },
+        {
+          "step": "after-isolation:invariants",
+          "status": 0,
+          "violations": 0
+        }
+      ]
+    },
+    {
+      "name": "queue_and_no_oversell",
+      "status": "passed",
+      "duration_ms": 25,
+      "error": null,
+      "steps": [
+        {
+          "step": "reset",
+          "status": 204
+        },
+        {
+          "step": "capacity",
+          "status": 200
+        },
+        {
+          "step": "fill-node",
+          "status": 201
+        },
+        {
+          "step": "overflow",
+          "status": 202
+        },
+        {
+          "step": "queued-get",
+          "status": 200
+        },
+        {
+          "step": "after-fill:capacity",
+          "status": 200
+        },
+        {
+          "step": "after-fill:allocations",
+          "status": 200
+        },
+        {
+          "step": "after-fill:invariants",
+          "status": 0,
+          "violations": 0
+        }
+      ]
+    },
+    {
+      "name": "mixed_load_invariants",
+      "status": "passed",
+      "duration_ms": 63,
+      "error": null,
+      "steps": [
+        {
+          "step": "reset",
+          "status": 204
+        },
+        {
+          "step": "capacity",
+          "status": 200
+        },
+        {
+          "step": "create-cpu",
+          "status": 201
+        },
+        {
+          "step": "create-central-01",
+          "status": 201
+        },
+        {
+          "step": "create-vision-01",
+          "status": 201
+        },
+        {
+          "step": "create-nlp-01",
+          "status": 201
+        },
+        {
+          "step": "mixed:capacity",
+          "status": 200
+        },
+        {
+          "step": "mixed:allocations",
+          "status": 200
+        },
+        {
+          "step": "mixed:invariants",
+          "status": 0,
+          "violations": 0
+        }
+      ]
+    },
+    {
+      "name": "node_notready_eviction",
+      "status": "passed",
+      "duration_ms": 54,
+      "error": null,
+      "steps": [
+        {
+          "step": "reset",
+          "status": 204
+        },
+        {
+          "step": "capacity",
+          "status": 200
+        },
+        {
+          "step": "create",
+          "status": 201
+        },
+        {
+          "step": "node-notready",
+          "status": 200
+        },
+        {
+          "step": "clock",
+          "status": 200
+        },
+        {
+          "step": "get",
+          "status": 200
+        },
+        {
+          "step": "after-eviction:capacity",
+          "status": 200
+        },
+        {
+          "step": "after-eviction:allocations",
+          "status": 200
+        },
+        {
+          "step": "after-eviction:invariants",
+          "status": 0,
+          "violations": 0
+        }
+      ]
+    },
+    {
+      "name": "preemption_contract",
+      "status": "passed",
+      "duration_ms": 64,
+      "error": null,
+      "steps": [
+        {
+          "step": "reset",
+          "status": 204
+        },
+        {
+          "step": "capacity",
+          "status": 200
+        },
+        {
+          "step": "create",
+          "status": 201
+        },
+        {
+          "step": "demand",
+          "status": 201
+        },
+        {
+          "step": "get",
+          "status": 200
+        },
+        {
+          "step": "checkpoint",
+          "status": 200
+        },
+        {
+          "step": "clock",
+          "status": 200
+        },
+        {
+          "step": "get-after-clock",
+          "status": 200
+        },
+        {
+          "step": "after-preemption:capacity",
+          "status": 200
+        },
+        {
+          "step": "after-preemption:allocations",
+          "status": 200
+        },
+        {
+          "step": "after-preemption:invariants",
+          "status": 0,
+          "violations": 0
+        }
+      ]
+    },
+    {
+      "name": "ext_finance_flow",
+      "status": "passed",
+      "duration_ms": 149,
+      "error": null,
+      "steps": [
+        {
+          "step": "reset",
+          "status": 204
+        },
+        {
+          "step": "analyze",
+          "status": 200
+        },
+        {
+          "step": "decision",
+          "status": 201
+        },
+        {
+          "step": "submit",
+          "status": 201
+        },
+        {
+          "step": "release",
+          "status": 202
+        },
+        {
+          "step": "clock",
+          "status": 200
+        },
+        {
+          "step": "settle",
+          "status": 201
+        },
+        {
+          "step": "settle",
+          "status": 201
+        },
+        {
+          "step": "account",
+          "status": 200
+        },
+        {
+          "step": "after-finance:capacity",
+          "status": 200
+        },
+        {
+          "step": "after-finance:allocations",
+          "status": 200
+        },
+        {
+          "step": "after-finance:invariants",
+          "status": 0,
+          "violations": 0
+        }
+      ]
+    }
+  ]
+}
