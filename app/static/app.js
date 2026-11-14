@@ -16,7 +16,7 @@ async function api(path, options = {}) {
 }
 
 function toast(message, error = false) {
-  const el = $('#toast'); el.textContent = message; el.style.borderColor = error ? '#fb6b62' : '#d8ff4f';
+  const el = $('#toast'); el.textContent = message; el.style.borderColor = error ? '#fb6b62' : '#4f87ff';
   el.classList.add('show'); clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.remove('show'), 3200);
 }
 
