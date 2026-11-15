@@ -8,7 +8,7 @@ const time = (value, full=false) => value ? new Date(value).toLocaleString('zh-C
 const initials = name => esc((name || '公').slice(0,1));
 const statusNames = {Running:'运行中',Allocated:'已分配',Pending:'排队中',PreemptRequested:'收回通知期',Preempted:'已收回',Released:'已释放',Expired:'已到期',Evicted:'已驱逐',Rejected:'已拒绝',pending:'待审批',accepted:'已批准',rejected:'已拒绝',cancelled:'已取消',countered:'待协商'};
 const statusPill = value => '<span class="pill '+(['Running','accepted'].includes(value)?'teal':['Pending','PreemptRequested','pending'].includes(value)?'amber':value==='Allocated'?'blue':'subtle')+'">'+esc(statusNames[value] || value)+'</span>';
-const routeInfo = {overview:['算力广场','发现算力','discover'],submit:['提交实验','发现算力','discover'],queues:['队列与预测','发现算力','discover'],tasks:['我的任务','我的工作台','personal'],profile:['个人画像','我的工作台','personal'],economy:['收支与收益','我的工作台','personal'],groups:['资源小组','协作与贡献','collaborate'],approvals:['共享审批','协作与贡献','collaborate'],mount:['贡献资源','协作与贡献','collaborate'],guide:['使用指南','帮助与记录','help'],timeline:['事件记录','帮助与记录','help']};
+const routeInfo = {rentals:['私有卡租用','发现算力','discover'],overview:['算力广场','发现算力','discover'],submit:['提交实验','发现算力','discover'],queues:['队列与预测','发现算力','discover'],tasks:['我的任务','我的工作台','personal'],profile:['个人画像','我的工作台','personal'],economy:['收支与收益','我的工作台','personal'],groups:['资源小组','协作与贡献','collaborate'],approvals:['共享审批','协作与贡献','collaborate'],mount:['贡献资源','协作与贡献','collaborate'],guide:['使用指南','帮助与记录','help'],timeline:['事件记录','帮助与记录','help']};
 function savedIdentity(){try{return JSON.parse(localStorage.getItem('aurora.session') || 'null')?.user_id || null;}catch{return null;}}
 function createSubmissionDraft(){return {intent:null,intentFingerprint:'',planCache:new Map(),previewCache:new Map(),activePlan:null,activePreview:null,dirty:false};}
 const state = {owner:savedIdentity() || 'u-20260309',loggedIn:!!savedIdentity(),accounts:[],featured:[],selectedAccount:null,data:null,profile:null,intelligence:null,contributions:null,lastIntentResult:null,approvals:[],route:'overview',detail:null,detailTab:'plan',horizon:24,request:0,detailRequest:0,guideRole:'borrower',identityEpoch:0,draft:createSubmissionDraft()};
@@ -26,11 +26,11 @@ function renderAccounts(){
   $('#enterWorkspace').disabled=!state.selectedAccount;
 }
 function chooseAccount(id){state.selectedAccount=id;renderAccounts();$('#otherAccount').value=state.featured.some(u=>u.user_id===id)?'':id;}
-function showLogin(){state.identityEpoch++;if($('#resourceDialog').open)$('#resourceDialog').close();state.loggedIn=false;state.request++;$('#appShell').hidden=true;$('#loginScreen').hidden=false;chooseAccount(state.owner);window.scrollTo(0,0);}
+function showLogin(){state.identityEpoch++;if($('#resourceDialog').open)$('#resourceDialog').close();if($('#rentalDialog').open)$('#rentalDialog').close();state.loggedIn=false;state.request++;$('#appShell').hidden=true;$('#loginScreen').hidden=false;chooseAccount(state.owner);window.scrollTo(0,0);}
 async function login(){
   if(!state.selectedAccount)return;
   const user=state.accounts.find(u=>u.user_id===state.selectedAccount);if(!user)return;
-  state.identityEpoch++;state.owner=user.user_id;state.loggedIn=true;state.profile=null;state.intelligence=null;state.contributions=null;state.lastIntentResult=null;state.approvals=[];state.data=null;state.draft=createSubmissionDraft();clearContributionErrors();syncContributionGpuMemory();
+  state.identityEpoch++;state.owner=user.user_id;state.loggedIn=true;state.profile=null;state.intelligence=null;state.contributions=null;state.lastIntentResult=null;state.approvals=[];state.rentals=[];state.rentalError=null;state.data=null;state.draft=createSubmissionDraft();clearContributionErrors();syncContributionGpuMemory();
   localStorage.setItem('aurora.session',JSON.stringify({user_id:user.user_id}));localStorage.setItem('aurora.owner',user.user_id);
   $('#appShell').hidden=false;$('#loginScreen').hidden=true;
   $('#sidebarUser').textContent=user.name;$('#sidebarAvatar').textContent=user.name.slice(0,1);
@@ -45,6 +45,8 @@ async function load(){
     const [data,profile,intelligence,contributions]=await Promise.all([api('/api/dashboard'),api('/api/demo/profile'),api('/api/demo/intelligence').catch(()=>null),api('/api/demo/contributions').catch(error=>({contributions:[],events:[],error:error.message}))]);
     if(version!==state.request || owner!==state.owner || !state.loggedIn)return;
     state.data=data;state.profile=profile;state.intelligence=intelligence;state.contributions=contributions;render();
+    try{const rentals=await api('/ext/v1/rentals');if(version!==state.request)return;state.rentals=rentals.items;state.rentalError=null;renderRentals();}
+    catch(error){if(version!==state.request)return;state.rentals=[];state.rentalError='任务服务未就绪，请重启 run.py 后刷新页面。';renderRentals();}
     $('#connectionStatus').textContent=intelligence?'演示资源已连接':'基础资源已连接 · 智能分析待就绪';$('#connectionDot').style.background='#60a5fa';
     $('#serviceNotice').hidden=true;
     try{const approvals=await api('/ext/v1/approvals');if(version!==state.request)return;state.approvals=approvals.approvals;renderApprovals();$('#extensionStatus').textContent='任务服务已连接 · 当前以 '+profile.user.name+' 的身份申请';}
@@ -209,7 +211,7 @@ function render(){
   $('#heroTotal').textContent=d.capacity.totals.gpu_total;$('#heroFree').textContent=d.capacity.totals.gpu_free;
   $('#metricRunning').textContent=s.running;$('#metricWaiting').textContent=s.waiting;$('#metricEarned').textContent=num(s.earned_30d);
   if($('#modelFilter').options.length===1){const models=[...new Set(d.capacity.nodes.flatMap(n=>n.gpus.map(g=>g.model)))];$('#modelFilter').innerHTML+=[...models].map(m=>'<option>'+esc(m)+'</option>').join('');}
-  renderResources();renderTasks();renderQueues();renderProfile();renderProfileIntelligence();renderEconomy();renderGroups();renderApprovals();renderGuide();renderEvents();renderOverviewAnalytics();renderAgent();renderEventChains();renderContributions();
+  renderResources();renderRentals();renderTasks();renderQueues();renderProfile();renderProfileIntelligence();renderEconomy();renderGroups();renderApprovals();renderGuide();renderEvents();renderOverviewAnalytics();renderAgent();renderEventChains();renderContributions();
   const hist=d.presentation.util_history || [];
   $('#utilHistory').innerHTML=lineChart(hist.map(p=>({at:p.hour_start,value:p.util_pct,future:false})),{key:'value',color:'#7d9bd8',title:'模拟校园 GPU 历史利用率'});
   renderRequestSummary();
@@ -316,7 +318,7 @@ function renderApprovals(){
   const pending=live.filter(a=>a.status==='pending').length+cases.filter(a=>a.status==='pending'&&a.approver_id===state.owner).length;
   $('#approvalCount').textContent=pending;$('#approvalSummary').textContent=pending+' 条待我处理';
   const name=id=>state.accounts.find(u=>u.user_id===id)?.name||id;
-  $('#approvalList').innerHTML=live.map(a=>'<article class="panel approval-card"><div><div class="task-head">'+statusPill(a.status)+'</div><h3>'+esc(a.note||'共享资源申请')+'</h3><p>'+esc(name(a.requester))+' 申请 '+esc(name(a.owner_id))+' 的资源</p><p class="task-id">'+esc(a.approval_id)+'</p></div><div class="task-actions">'+(a.status==='pending'&&a.owner_id===state.owner?'<button class="button secondary" data-approval-action="reject" data-approval-id="'+esc(a.approval_id)+'">暂不共享</button><button class="button primary" data-approval-action="accept" data-approval-id="'+esc(a.approval_id)+'">同意共享</button>':'')+(a.status==='accepted'&&a.requester===state.owner?'<button class="button primary" data-submit-decision="'+esc(a.decision_id)+'">确认条件并提交</button>':'')+'</div></article>').join('')+(!live.length?'<div class="panel empty-state">'+icon('users')+'<b>暂无现场申请</b><p>申请私有 GPU 后，可切换卡主账号审核。</p></div>':'');
+  $('#approvalList').innerHTML=live.map(a=>'<article class="panel approval-card"><div><div class="task-head">'+statusPill(a.status)+'</div><h3>'+esc(a.note||'共享资源申请')+'</h3><p>'+esc(name(a.requester))+' 申请 '+esc(name(a.owner_id))+' 的资源</p><p>'+esc(a.requested.gpu_count)+' 张 · '+esc(a.requested.gpu_models.join(' / '))+'</p><p class="task-id">'+esc(a.approval_id)+'</p></div><div class="task-actions">'+(a.status==='pending'&&a.owner_id===state.owner?'<button class="button secondary" data-approval-action="reject" data-approval-id="'+esc(a.approval_id)+'">暂不共享</button><button class="button primary" data-approval-action="accept" data-approval-id="'+esc(a.approval_id)+'">同意共享</button>':'')+(a.status==='accepted'&&a.requester===state.owner&&!state.rentals?.some(r=>r.approval.approval_id===a.approval_id&&r.submission?.accepted)?'<button class="button primary" data-submit-decision="'+esc(a.decision_id)+'">确认条件并提交</button>':'')+'</div></article>').join('')+(!live.length?'<div class="panel empty-state">'+icon('users')+'<b>暂无现场申请</b><p>申请私有 GPU 后，可切换卡主账号审核。</p></div>':'');
   $('#approvalCases').innerHTML=cases.map(a=>'<article class="panel approval-case '+esc(a.status)+'"><div class="approval-case-head"><div><span class="eyebrow">'+esc(a.id)+'</span><h3>'+esc(a.task_name)+'</h3></div>'+statusPill(a.status)+'</div><div class="approval-route"><span class="avatar">'+initials(a.requester_name)+'</span><div><b>'+esc(a.requester_name)+'</b><small>申请使用</small></div><span class="route-arrow">→</span><div><b>'+esc(a.approver_name)+'</b><small>资源审批人</small></div></div><div class="approval-specs"><span><b>'+esc(a.gpu_model)+'</b>'+a.gpu_count+' 张 GPU</span><span><b>'+num(a.duration_hours)+' h</b>预计时长</span><span><b>'+num(a.estimated_credits)+'</b>预估积分</span><span><b>'+esc(a.risk||'待评估')+'</b>回收风险</span></div><p class="approval-reason">'+esc(a.note||'申请人未补充说明')+'</p>'+(a.status==='pending'&&a.approver_id===state.owner?'<label class="field decision-note">批复意见<textarea id="note-'+esc(a.id)+'" rows="2" placeholder="说明共享窗口、风险或拒绝原因">请在声明的共享窗口内使用，任务结束后及时释放。</textarea></label><div class="task-actions"><button class="button secondary" data-case-action="reject" data-case-id="'+esc(a.id)+'">拒绝并说明</button><button class="button secondary" data-case-action="counter" data-case-id="'+esc(a.id)+'">提出协商</button><button class="button primary" data-case-action="accept" data-case-id="'+esc(a.id)+'">批准共享</button></div>':'<div class="decision-result"><span>批复结果</span><p>'+esc(a.decision_note||(a.status==='pending'?'等待审批人处理':'已完成批复'))+'</p><small>'+esc(a.decided_at?time(a.decided_at,true):'尚未批复')+'</small></div>')+'</article>').join('')||'<div class="panel empty-state">当前账号暂无审批案例。</div>';
 }
 const guideFlows={
@@ -489,6 +491,9 @@ function consumePlan(fingerprint){
   state.draft.activePlan=null;state.draft.activePreview=null;state.draft.dirty=false;renderRequestSummary();
 }
 async function submitDecision(id,durationSeconds=formValues().duration_seconds){
+  const detail=await api('/ext/v1/decisions/'+id);
+  if(detail.submission?.accepted){toast('该申请已经提交，请在我的任务查看。');return;}
+  durationSeconds=detail.decision.allocation.ttl_seconds;
   const r=await api('/ext/v1/decisions/'+id+'/submit',{}),a=r.submission?.allocation;
   if(a?.state==='Allocated'){
     try{await api('/v1/jobs',{allocation_id:a.id,image:'demo/workload:latest',command:['simulate'],timeout_seconds:durationSeconds});toast('申请成功，模拟任务已开始运行。');}

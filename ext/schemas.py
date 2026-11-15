@@ -17,7 +17,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CONTRACT_VERSION = "1.5.0"
+CONTRACT_VERSION = "1.6.0"
 
 SNAPSHOT_SOURCE = "fabric:/v1/capacity"
 
@@ -331,6 +331,7 @@ class PlacementDecision(BaseModel):
 
     contract_version: str = CONTRACT_VERSION
     decision_id: str
+    request_kind: Literal["experiment", "private_rental"] = "experiment"
     plan_id: str | None = None
     task_id: str
     strategy: StrategyName

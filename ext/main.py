@@ -112,6 +112,8 @@ def create_app(
     app.state.estimator = workload_estimator
     app.state.ledger = ledger
     app.state.availability = availability
+    from ext.rentals import install as install_rentals
+    install_rentals(app, fabric, task_store, ExtError, _require_owner)
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
     static_dir = Path(__file__).parent / "static"
@@ -474,6 +476,26 @@ def create_app(
                         "window_end": approval.window_end,
                     },
                 )
+
+        if decision.request_kind == "private_rental":
+            previous = task_store.get_submission(decision_id)
+            if previous and previous.get("accepted"):
+                response.status_code = previous["status_code"]
+                return {"decision": decision.model_dump(), "submission": previous}
+            try:
+                current = fabric.capacity()
+            except (FabricUnavailable, FabricError) as exc:
+                raise ExtError(502, "upstream_unavailable", "暂时无法核对资源容量，请稍后领取。") from exc
+            node = next((n for n in current.nodes if n.node_id == decision.node_id), None)
+            if node is None or node.state != "Ready" or not node.contributed:
+                raise ExtError(409, "rental_unavailable", "该工作站当前不可用，请稍后领取。")
+            if node.labels.get("owner_user_id") != approval.owner_id:
+                raise ExtError(409, "rental_owner_changed", "资源归属已变化，请重新申请授权。")
+            gpu = decision.allocation.request.gpu
+            free = sum(g.held_by is None and g.model == gpu.model and g.memory_mib >= gpu.memory_mib
+                       for g in node.gpus)
+            if free < gpu.count:
+                raise ExtError(409, "rental_busy", "当前空闲卡数不足，审批授权仍保留。请稍后刷新再领取。")
 
         idempotency_key = (body.idempotency_key if body else None) or decision.decision_id
         try:

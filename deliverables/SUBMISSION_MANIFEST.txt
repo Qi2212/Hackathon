@@ -1,0 +1,11 @@
+CampusGrove source submission
+Base commit: f5aed8076b273b4ac78f575346f45f66756cc2e6
+Verification date: 2026-11-15
+Source from the committed snapshot. Additional submission evidence files are listed below.
+Excluded: .env, .env.example, .git, .app, .venv, local development_log.txt.
+Main demo: python run.py; port 8080/8090 by default; reproduction SOP in revised DOCX uses 18080/18090.
+The revised DOCX is a separate deliverable, not part of the source commit.
+
+docs/THIRD_PARTY_NOTICES.md SHA256 e7fe3b203fd89ed50f21705ee5ae2f0af7ba308ea314f7a871b82a08962cf505
+reports/submission_verification_20261115.txt SHA256 dc895df03f817063e007c742bb45b77a9bd44e2fcb9a8dcee9b1ed56a8e96fbe
+reports/submission_demo_check_20261115.txt SHA256 cb494d380c1f69c90a670b93138754e5ce94c2fe5c613876d9661c3ffa8693ae

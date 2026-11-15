@@ -1,0 +1,1 @@
+PASS http://localhost:18080: real button click POST 200, analysis card shown, budget changes result, no JavaScript errors.
