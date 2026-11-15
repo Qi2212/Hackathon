@@ -7,6 +7,7 @@ in the following steps.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import os
@@ -165,6 +166,63 @@ class SkeletonState:
             if found and found[1]["held_by"] == alloc["id"]:
                 found[1]["held_by"] = None
 
+    def reconcile(self) -> None:
+        """Bring the ledger up to date with logical time.
+
+        Runs before every request (see the attach_request_id middleware) and on
+        every /_test/clock advance, so lease expiry and contributor-demand
+        deadlines are observable whether time passes for real or is advanced by
+        the test control plane. Preemptions are settled first: a lease whose
+        notice deadline has passed must be returned to its contributor, not
+        quietly expired.
+        """
+        self.process_due_preemptions()
+        self.process_due_expirations()
+
+    def process_due_expirations(self) -> None:
+        """Reclaim every lease whose ttl_seconds elapsed (Allocated/Running -> Expired).
+
+        PreemptRequested leases are left alone: process_due_preemptions owns
+        them, and they are released on the notice deadline instead.
+        """
+        now = self.now()
+        due = []
+        for alloc in self.allocations.values():
+            if alloc["state"] not in {"Allocated", "Running"}:
+                continue
+            raw = alloc.get("expires_at")
+            if not raw:
+                continue
+            try:
+                deadline = parse_iso(raw)
+            except (TypeError, ValueError):
+                continue
+            if now >= deadline:
+                due.append((deadline, alloc))
+        for deadline, alloc in sorted(due, key=lambda item: item[0]):
+            previous = alloc["state"]
+            gpu_ids = list((alloc.get("placement") or {}).get("gpu_ids") or [])
+            self.release(alloc)
+            alloc["state"] = "Expired"
+            alloc["expires_at"] = iso(deadline)
+            self.emit(
+                "allocation.expired",
+                allocation_id=alloc["id"],
+                owner=alloc["owner"],
+                from_state=previous,
+                to_state="Expired",
+                reason="lease ttl reached",
+                detail={"gpu_ids": gpu_ids, "expired_at": iso(deadline)},
+            )
+            if gpu_ids:
+                self.emit(
+                    "gpu.returned_to_pool",
+                    allocation_id=alloc["id"],
+                    owner=alloc["owner"],
+                    reason="lease expired",
+                    detail={"gpu_ids": gpu_ids},
+                )
+
     def process_due_preemptions(self) -> None:
         """Logical clock advanced: return every GPU whose notice deadline passed."""
         now = self.now()
@@ -321,10 +379,78 @@ STATIC = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
+FAULT_STATUS = {"429": 429, "500": 500, "503": 503}
+
+
+def operation_name(method: str, path: str) -> str:
+    """Stable name for a public operation, used as the /_test/fault key.
+
+    The frozen spec leaves `operation` as a free-form string, so a fault may
+    also be keyed by "METHOD /path", by the raw path, or by "*" for every
+    public operation (see fault_response).
+    """
+    parts = [p for p in path.split("/") if p]
+    if parts[:2] == ["v1", "allocations"]:
+        if len(parts) == 2:
+            return "create_allocation" if method == "POST" else "list_allocations"
+        if len(parts) == 3:
+            return "release_allocation" if method == "DELETE" else "get_allocation"
+        return f"{parts[3]}_allocation"  # renew / checkpoint / resume
+    if parts[:2] == ["v1", "jobs"]:
+        if len(parts) == 2:
+            return "create_job" if method == "POST" else "list_jobs"
+        return "cancel_job" if method == "DELETE" else "get_job"
+    if len(parts) == 2 and parts[0] == "v1":
+        return f"get_{parts[1]}"  # capacity / events / metrics / version
+    if parts[:1] == ["healthz"]:
+        return "healthz"
+    return f"{method} {path}"
+
+
+async def fault_response(request: Request, request_id: str) -> JSONResponse | None:
+    """Apply a configured /_test/fault to this request, if one matches.
+
+    Each match consumes one unit of `count`; a fault with no budget left, or
+    with mode "none", is inert. Test-control paths are never faulted, so the
+    evaluator can always reset or advance the clock to recover.
+    """
+    if not state.faults or request.url.path.startswith("/_test"):
+        return None
+    path = request.url.path
+    candidates = (operation_name(request.method, path), f"{request.method} {path}", path, "*")
+    for key in candidates:
+        config = state.faults.get(key)
+        if not config or config.get("mode", "none") == "none":
+            continue
+        if config.get("count", 0) <= 0:
+            continue
+        config["count"] -= 1
+        if config["mode"] == "latency":
+            await asyncio.sleep(max(0, config.get("delay_ms", 0)) / 1000)
+            return None
+        status = FAULT_STATUS[config["mode"]]
+        return JSONResponse(
+            status_code=status,
+            content={
+                "error": "fault_injected",
+                "detail": f"injected {config['mode']} for operation {key}",
+                "request_id": request_id,
+            },
+            headers={"X-Request-Id": request_id, **({"Retry-After": "1"} if status == 429 else {})},
+        )
+    return None
+
+
 @app.middleware("http")
 async def attach_request_id(request: Request, call_next):
     request_id = uid("req")
     request.state.request_id = request_id
+    # Settle expired leases and due preemptions before the handler reads state,
+    # so every public endpoint observes the same up-to-date ledger.
+    state.reconcile()
+    injected = await fault_response(request, request_id)
+    if injected is not None:
+        return injected
     response = await call_next(request)
     response.headers["X-Request-Id"] = request_id
     return response
@@ -816,7 +942,7 @@ async def advance_clock(
 ) -> dict[str, Any]:
     require_test_key(x_test_key)
     state.offset_seconds += body.advance_seconds
-    state.process_due_preemptions()
+    state.reconcile()
     return {"logical_time": iso(state.now()), "offset_seconds": round(state.offset_seconds, 3)}
 
 
