@@ -82,6 +82,10 @@ class SkeletonState:
         self.offset_seconds = 0.0
         self.base_time = PROCESS_STARTED_AT
         self.nodes: list[dict[str, Any]] = copy.deepcopy(INITIAL_RESOURCES)
+        if demo.enabled():
+            from app.contributions import published_nodes
+            existing_node_ids = {node["node_id"] for node in self.nodes}
+            self.nodes.extend(node for node in published_nodes() if node["node_id"] not in existing_node_ids)
         for node in self.nodes:
             node["labels"]["fabric_node_id"] = node["node_id"]
         self.allocations: dict[str, dict[str, Any]] = {}

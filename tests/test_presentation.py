@@ -9,8 +9,9 @@ from app.presentation import install
 
 
 @pytest.fixture
-def demo_client(monkeypatch):
+def demo_client(monkeypatch, tmp_path):
     monkeypatch.setenv("FABRIC_DEMO", "1")
+    monkeypatch.setenv("CAMPUS_DEMO_DATA_DIR", str(tmp_path / "demo-data"))
     seed = demo.load_seed()
     monkeypatch.setattr(main, "INITIAL_RESOURCES", seed["nodes"])
     monkeypatch.setattr(main, "DEMO_SEED", seed)
@@ -48,13 +49,71 @@ def test_preview_does_not_mutate_or_reserve_resources(demo_client):
         assert len(p["gpu_ids"]) == 2
         assert set(p["gpu_ids"]) <= {g["gpu_id"] for g in state.node(p["node_id"])["gpus"]}
         assert p["estimated_end_at"] > p["estimated_start_at"]
+        assert p["estimated_start_latest"] >= p["estimated_start_at"]
+        assert p["estimate_status"] == "conditional" and "条件推演" in p["estimate_basis"]
     assert (state.nodes, state.allocations) == before
 
 
 def test_unknown_model_has_no_fabricated_prediction(demo_client):
     client, _ = demo_client
     p = client.post("/api/demo/preview", json={"gpu_model": "imaginary-GPU"}).json()["prediction"]
-    assert p["node_id"] is None and p["estimated_start_at"] is None and p["gpu_ids"] == []
+    assert p["node_id"] is None and p["gpu_ids"] == []
+    assert p["estimated_start_at"] is None and p["estimated_start_latest"] is None
+    assert p["estimated_end_at"] is None and p["wait_minutes"] is None
+    assert p["compatible_node_count"] == 0 and p["compatible_gpu_count"] == 0
+    assert p["estimate_status"] == "unavailable" and p["blocking_reason"]
+    assert "未生成开始或结束时间" in p["estimate_basis"]
+
+
+def test_queue_entries_explain_demand_predecessors_capacity_and_blockers(demo_client):
+    client, state = demo_client
+    before = copy.deepcopy((state.nodes, state.allocations))
+    entries = client.get("/api/dashboard", headers={"X-Owner": "u-20260309"}).json()["queue_entries"]
+    assert entries
+    assert any(entry["predecessor_count"] > 0 for entry in entries)
+    for entry in entries:
+        request = state.allocations[entry["allocation_id"]]["request"]["gpu"]
+        assert entry["position"] == entry["predecessor_count"] + 1
+        assert entry["gpu_requirement"]["count"] == request["count"]
+        assert entry["gpu_requirement"]["model"] == request["model"]
+        assert entry["gpu_count"] == request["count"]
+        assert entry["compatible_node_count"] >= 0 and entry["compatible_gpu_count"] >= 0
+        assert entry["known_release_gpu_count"] >= 0
+        assert entry["estimate_basis"]
+        if entry["estimated_start_at"] is None:
+            assert entry["estimated_start_latest"] is None and entry["estimated_end_at"] is None
+            assert entry["blocking_reason"] and entry["estimate_status"] == "unavailable"
+        else:
+            assert entry["estimated_start_latest"] >= entry["estimated_start_at"]
+            assert entry["estimate_status"] == "conditional"
+    assert (state.nodes, state.allocations) == before
+
+
+def test_missing_lease_expiry_does_not_create_start_interval(demo_client):
+    client, state = demo_client
+    node = state.node("central-01")
+    holder = "alloc-without-lease"
+    state.allocations[holder] = {"id": holder, "state": "Running", "expires_at": None}
+    for gpu in node["gpus"]:
+        gpu["held_by"] = holder
+    p = client.post("/api/demo/preview", json={"node_id": node["node_id"], "gpu_model": "H100"},
+                    headers={"X-Owner": "u-20260309"}).json()["prediction"]
+    assert p["compatible_gpu_count"] == len(node["gpus"])
+    assert p["known_release_gpu_count"] == 0
+    assert p["estimated_start_at"] is None and p["estimated_start_latest"] is None
+    assert p["estimated_end_at"] is None
+    assert "可靠租约" in p["blocking_reason"]
+
+
+def test_preview_visibility_and_dashboard_are_side_effect_free(demo_client):
+    client, state = demo_client
+    node = next(node for node in state.nodes if node["labels"].get("source_type") == "lab_public")
+    before = copy.deepcopy((state.nodes, state.allocations))
+    hidden = client.post("/api/demo/preview", json={"node_id": node["node_id"]},
+                         headers={"X-Owner": "u-20260805"})
+    assert hidden.status_code == 404
+    assert client.get("/api/dashboard", headers={"X-Owner": "u-20260309"}).status_code == 200
+    assert (state.nodes, state.allocations) == before
 
 
 def test_global_views_disabled_outside_demo(demo_client, monkeypatch):

@@ -2,7 +2,7 @@
 
 约定：
 - 默认 `LLM_PROVIDER=none`，完全走确定性解析器，不依赖网络；
-- 配置 `LLM_PROVIDER=openai_compatible` 后调用任意 OpenAI 兼容的
+- 配置 `LLM_PROVIDER=openai_compatible` 或 `qwen` 后调用 OpenAI 兼容的
   `/chat/completions`，只负责“理解与补全”，不得虚构资源；
 - 任何网络/解析失败都返回 `LLMResult(data=None, error=...)`，由调用方回退，
   绝不让 LLM 故障影响 analyze 接口的可用性。
@@ -47,6 +47,7 @@ class LLMResult:
     data: dict[str, Any] | None
     provider: str
     error: str | None = None
+    model: str | None = None
 
     @property
     def used(self) -> bool:
@@ -100,17 +101,24 @@ class OpenAICompatibleProvider:
         try:
             response = self._client.post("/chat/completions", json=body, headers=headers)
             if response.status_code >= 400:
-                return LLMResult(None, self.name, f"http_{response.status_code}: {response.text[:200]}")
+                return LLMResult(None, self.name, f"http_{response.status_code}: {response.text[:200]}", self.model)
             payload = response.json()
             content = payload["choices"][0]["message"]["content"]
             if not isinstance(content, str):
-                return LLMResult(None, self.name, "empty completion")
-            return LLMResult(_loads_json_object(content), self.name, None)
+                return LLMResult(None, self.name, "empty completion", self.model)
+            data = _loads_json_object(content)
+            if data is None:
+                return LLMResult(None, self.name, "invalid JSON completion", self.model)
+            return LLMResult(data, self.name, None, self.model)
         except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
-            return LLMResult(None, self.name, f"{type(exc).__name__}: {exc}")
+            return LLMResult(None, self.name, f"{type(exc).__name__}: {exc}", self.model)
 
     def close(self) -> None:
         self._client.close()
+
+
+class QwenProvider(OpenAICompatibleProvider):
+    name = "qwen"
 
 
 def _loads_json_object(content: str) -> dict[str, Any] | None:
@@ -126,17 +134,35 @@ def _loads_json_object(content: str) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _first_env(*names: str) -> str | None:
+    for name in names:
+        value = os.getenv(name)
+        if value and value.strip():
+            return value.strip()
+    return None
+
+
 def provider_from_env() -> LLMProvider:
     kind = os.getenv("LLM_PROVIDER", "none").strip().lower()
-    if kind not in {"openai", "openai-compatible", "openai_compatible"}:
+    is_qwen = kind in {"qwen", "qwen-compatible", "qwen_compatible", "dashscope"}
+    if not is_qwen and kind not in {"openai", "openai-compatible", "openai_compatible"}:
         return NoopProvider()
-    base_url = os.getenv("LLM_BASE_URL", "").strip()
-    model = os.getenv("LLM_MODEL", "").strip()
+
+    if is_qwen:
+        base_url = _first_env("LLM_BASE_URL", "QWEN_BASE_URL", "DASHSCOPE_BASE_URL", "OPENAI_BASE_URL")
+        model = _first_env("LLM_MODEL", "QWEN_MODEL", "DASHSCOPE_MODEL", "OPENAI_MODEL")
+        api_key = _first_env("LLM_API_KEY", "QWEN_API_KEY", "DASHSCOPE_API_KEY", "OPENAI_API_KEY")
+        provider_type = QwenProvider
+    else:
+        base_url = _first_env("LLM_BASE_URL", "OPENAI_BASE_URL", "QWEN_BASE_URL", "DASHSCOPE_BASE_URL")
+        model = _first_env("LLM_MODEL", "OPENAI_MODEL", "QWEN_MODEL", "DASHSCOPE_MODEL")
+        api_key = _first_env("LLM_API_KEY", "OPENAI_API_KEY", "QWEN_API_KEY", "DASHSCOPE_API_KEY")
+        provider_type = OpenAICompatibleProvider
     if not base_url or not model:
         return NoopProvider()
-    return OpenAICompatibleProvider(
+    return provider_type(
         base_url=base_url,
-        api_key=os.getenv("LLM_API_KEY") or None,
+        api_key=api_key,
         model=model,
         timeout=float(os.getenv("LLM_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS))),
     )

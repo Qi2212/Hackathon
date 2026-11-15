@@ -1,360 +1,234 @@
-# Campus GPU Fabric · Server
+# CampusGrove · 校园 GPU 算力互助平台
 
-> 当前实现核对见 [reports/implementation_audit.md](reports/implementation_audit.md)。Aurora 已接入接口；run.py 默认同时启动 8080 资源服务和 8090 扩展服务，打开 http://localhost:8080。首次运行先安装 requirements.txt，再执行 python -m tools.build_demo_seed。API key 配置见 .env.example。下文旧有“P0–P9 完成”仅指 B 侧阶段，不表示总体设计文档全部完成；TTL 自动释放、Pending 自动派发、完整小组权限与分层匹配仍未实现。
+CampusGrove 将学校、实验室、协作组和个人的 GPU 放进同一个可发现、可申请、有授权与记录的互助流程。借用者可以查看资源与卡主计划，分析实验需求，比较方案并追踪任务；贡献者可以登记模拟工作站、发布资源并处理个人 GPU 的共享审批。
 
+当前版本是**由后端接口驱动的本地系统流程 Demo**：使用合成资源、任务与历史样本，操作会改变本地模拟状态，不会在真实 GPU 上执行训练。底层服务及部分历史文件仍使用 Campus GPU Fabric / Aurora 名称。
 
+## 文档入口
 
-校园 GPU 算力互助平台的**服务端**，按冻结的 `api/openapi.yaml`（v2.0.0）实现。
-A（`app/`，8080）提供容量、allocation、任务、事件与测试时钟；B（`ext/`，8090）提供
-任务解析、估算、策略、决策、审批、结算、可用性预测与工作台。默认以
-[演示快照](#演示模式内置模拟数据)（12 节点 / 34 卡）启动，两端数字同源。
+- [本地运行说明](docs/LOCAL_RUN.md)：Windows 安装、双服务启动、干净演示场景、账号、参数与排错。
+- [两分钟演示讲稿](docs/DEMO_2MIN.md)：当前路演使用，含提前准备、操作顺序与逐段口播。
+- [完整演示与答辩讲稿](docs/DEMO_SCRIPT.md)：8–10 分钟完整稿、3 分钟短稿、私有卡审批加演与答辩问答。
+- 页面内的「使用指南」：项目介绍、借用与贡献流程、预测说明及五分钟演示脚本。
 
-## 启动
+## 当前功能
 
-```bash
-pip install -r requirements.txt
-python run.py
+| 模块 | 当前行为 |
+| --- | --- |
+| 测试身份 | 选择预制账号进入，无需密码；可以切换个人身份、任务、画像与审批视角 |
+| 算力广场 | 按型号、来源和状态筛选；每台工作站的 3D GPU 每排四张，桌面端同时可见，窄屏横向滚动 |
+| GPU 详情 | 单卡 / 整机详情、归属与规格、卡主项目计划曲线、24 / 48 / 72 小时条件共享窗口、当前任务和模拟收益 |
+| 实验分析 | 一张表单共用研究目标和申请约束；本地模拟 API 返回任务拆解、候选节点、费用、条件时间与风险 |
+| 资源方案 | 经济、算力、稳定、均衡四策略对比；修改输入后旧方案失效，确认提交复用已核对的方案 |
+| 队列与任务 | 个人等待摘要、队列顺位、前序数量、阻塞原因和条件开始 / 结束时间；申请、运行状态展示与手动释放 |
+| 个人画像 | 按当前个人展示项目、任务、个人资源及演示统计特征 |
+| 资源与审批 | 实验室 / 协作组公共资源按身份过滤；个人私有资源可发现，借用需卡主授权；区分现场申请与预制审核案例 |
+| 贡献资源 | 在线登记或 JSON 批量导入，核对草稿后显式发布；无活动租约时可撤回，记录持久保存 |
+| 收支与事件 | 合成历史的来源、贡献者与平台收益拆分；本地交互、审批案例与事件回放 |
+
+角色切换是演示机制，尚未接入生产身份认证。资源可见规则与真实集群的完整权限治理仍有区别。
+
+## 快速启动（Windows / PowerShell）
+
+需要 Python 3.11+ 和浏览器。演示电脑无需 GPU / CUDA、Excel、数据库、Redis 或 Node.js 构建环境。首次安装依赖需要网络，默认演示无需外部模型服务。
+
+### 首次安装
+
+```powershell
+Set-Location 'D:\spring_boot_content\Hackathon'
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-- BASE_URL：`http://localhost:8080`
-- OpenAPI 文档：`http://localhost:8080/docs`
-- 单进程 Python 3.11+ / FastAPI，内存状态，无数据库、Redis、消息队列。
-- 开发热重载：`RELOAD=1 python run.py`（默认关闭）。
-- 契约原文件：[api/openapi.yaml](api/openapi.yaml)；赛题说明：[api/challenge.md](api/challenge.md)。
+仓库已附带演示种子。仅在 `app/data/demo_seed.json` 缺失或修改合成场景后重新生成：
 
-环境变量：
-
-| 变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `TEST_KEY` | `campus-test-key` | `/_test/*` 的 `X-Test-Key` |
-| `RESOURCES_FILE` | 仓库根 `resources.json` | 初始资源池；文件格式见下 |
-| `FABRIC_DEMO` | 空 | `1` 时启用演示快照（见下）；`run.py` / `run_ext.py` 默认置为 `1` |
-
-### 演示模式（内置模拟数据）
-
-当前界面不读取 Excel。资源、任务、测试用户、历史收益和利用率曲线由 app/synthetic.py 合成；项目计划样例配置在 app/data/experience_plans.json。
-
-- 12 台工作站 / 34 张 GPU，20 个运行任务、12 个等待任务；10 张空闲、2 张卡主自用、2 张节点离线。
-- 4 个主测试账号：林同学（借用与贡献）、周同学（私有卡贡献者）、尹同学（独立用户）、蔡老师（实验室协作）；账号选择页可进入更多模拟成员。
-- 无需密码，选择账号即可进入；这是 Demo 身份选择，不是生产认证。左下角点击账号可切换，个人画像也可切换账号。
-- 侧栏按「发现算力 / 我的工作台 / 协作与贡献 / 帮助与记录」折叠分组。
-- 点击 GPU 资源卡，可查看卡主项目进度曲线、后续计划、24/48/72 小时共享窗口、当前任务、卡槽、硬件归属及节点收益。
-- 个人画像随当前账号显示任务、个人资源、信用与收益。使用指南提供借用、贡献、协作三条体验路径。
-- 重启恢复内置场景。图表区分模拟记录、预制计划与条件预测，不提供真实 GPU 监控。
-- 默认不调用模型；API key 配置在项目根 .env，参考 .env.example。
-
-修改合成场景后重新生成：
-
-    python -m tools.build_demo_seed
-
-再重启 python run.py。无需 Excel、数据库、Node 构建或网络资源；网页在 http://localhost:8080。详细接口工作台仍在 http://localhost:8090/ui/。
-
-界面体验说明见 [reports/ui_experience.md](reports/ui_experience.md)。旧实现审计报告保留为历史记录，当前数据源以本节为准。
-
-## 请求头约定
-
-| 头 | 作用于 | 说明 |
-| --- | --- | --- |
-| `X-Owner` | `/v1/allocations*`、`/v1/jobs*`、`/v1/events`、`/v1/metrics` | 必填；缺失 400 `owner_required` |
-| `X-Test-Key` | `/_test/*` | 错误返回 403 |
-| `Idempotency-Key` | `POST /v1/allocations` | 最长 128 字符（第 1 步仅校验长度，去重在第 3 步） |
-
-`/healthz`、`/v1/version`、`/v1/capacity` 不要求鉴权。错误体统一 `{error, detail, request_id}`，
-响应头带 `X-Request-Id`。body `owner` 与 `X-Owner` 不一致 → 400，detail 写明两个值。
-`renew` 的 `ttl_seconds` 省略（含无 body）时沿用当前值。
-
-## 初始资源（`resources.json`）
-
-| node_id | GPU | 数量 | 显存 | 标签 |
-| --- | --- | --- | --- | --- |
-| central-01 | H100 | 2 | 81559 MiB | `zone=campus-core, tier=public` |
-| vision-01 | RTX 4090 | 2 | 24564 MiB | `zone=campus-lab, lab=vision` |
-| nlp-01 | A100 | 2 | 40960 MiB | `zone=campus-lab, lab=nlp` |
-
-上限：6 张 GPU、CPU 168000 millicores、内存 589824 MiB、临时存储 1152000 MiB。
-`gpu_id` 显式写在文件里（如 `central-01-gpu-0`），跨 `/_test/reset` 稳定。
-
-文件格式（B 写生成器用；校验失败会 fail-fast 并指出节点/字段）：
-
-```json
-{
-  "version": 1,
-  "nodes": [{
-    "node_id": "central-01",
-    "state": "Ready",
-    "cpu_millicores": 64000,
-    "memory_mib": 262144,
-    "ephemeral_storage_mib": 512000,
-    "contributed": true,
-    "labels": {"zone": "campus-core"},
-    "gpus": [{"gpu_id": "central-01-gpu-0", "model": "H100", "memory_mib": 81559, "profile": null}]
-  }]
-}
+```powershell
+.\.venv\Scripts\python.exe -m tools.build_demo_seed
 ```
 
-`state` ∈ `Ready|Draining|NotReady`；`profile` 为 MIG-like 切分或 null；`node_id` / `gpu_id`
-必须全局唯一。文件在进程启动时读取，修改后需重启；`reset` 回到该文件的初始内容。
+### 启动演示
 
-## 四个自由结构字段
-
-- `Capacity.nodes[]`：`{node_id, state, gpus: [{gpu_id, model, memory_mib, profile, held_by}], cpu_millicores, memory_mib, ephemeral_storage_mib, contributed, labels}`
-- `Capacity.totals`：`{nodes, gpu_total, gpu_free, gpu_allocated, gpu_contributor_held, gpu_unavailable, cpu_millicores, memory_mib, ephemeral_storage_mib}`
-- `Allocation.placement`：`{node_id, gpu_ids[], bound_at}`
-- `Allocation.preemption`：`{demand_id, requested_at, deadline, gpu_ids[], checkpoint_status, lost_seconds, expected_return_at, restarts_used, restarts_left}`
-
-`held_by` = 持有它的 **allocation id** / `"contributor"` / `null`。
-`totals.gpu_total = gpu_free + gpu_allocated + gpu_contributor_held + gpu_unavailable`（I3）。
-`observed_at` 写逻辑时间 = 进程启动时刻 + 真实流逝 + `/_test/clock` 累计偏移，不是墙钟当前时间。
-
-## 已实现的端点（21 个）
-
-`/healthz`、`/v1/version`、`/v1/capacity`、`/v1/allocations`（POST/GET）、
-`/v1/allocations/{id}`（GET/DELETE）、`.../renew`、`.../checkpoint`、`.../resume`、
-`/v1/jobs`（POST/GET）、`/v1/jobs/{id}`（GET/DELETE）、`/v1/events`、`/v1/metrics`、
-`/_test/reset`、`/_test/clock`、`/_test/contributor-demand`、`/_test/node-state`、`/_test/fault`。
-
-真实行为：header 校验与错误体、跨 owner 一律 404、model 级候选匹配、单节点多卡原子绑定、
-`Allocated ↔ Running` 的 Job 联动、终态 DELETE 幂等 202、`renew` 省略 ttl 沿用原值、
-201 发 `allocation.created` + `allocation.allocated` 两条事件。
-
-## 已知限制（后续步骤替换）
-
-- 无显存 / profile / `node_selector` / CPU / 内存硬约束（第 3 步）。
-- `/_test/clock` 只累加偏移，没有按时间排序的到期队列；TTL / queue_timeout 不自动到期（第 2 步）。
-- 幂等键未按 `(owner, key)` 去重，也未做同 key 不同体的 409（第 3 步）。
-- `PreemptRequested` 仍只由 `/_test/contributor-demand` 触发；三条归还分支、`Preempted` 时序、
-  `resume` 的 200/202 路径未实现（第 6 步）。
-- `/_test/node-state` 只改状态，`NotReady` 不驱逐其上 Allocation；`/_test/fault` 只记录配置（第 7 步）。
-- Job 不会自行结束（第 5 步）。
-- 放置固定为按节点顺序 first-fit，尚无 `PLACEMENT` / `THETA` 开关（第 9 步）。
-- 原演示版 `/api/*` 产品扩展端点已移除；前端由 B 的第 4 步接入 `/v1/*`。
-
-## 验证
-
-```bash
-python -m pytest -q
+```powershell
+$env:FABRIC_DEMO = '1'
+$env:LLM_PROVIDER = 'none'
+$env:RELOAD = '0'
+$env:FABRIC_EXT_AUTOSTART = '1'
+$env:PORT = '8080'
+$env:EXT_PORT = '8090'
+$env:FABRIC_BASE_URL = 'http://127.0.0.1:8080'
+$env:EXT_BASE_URL = 'http://127.0.0.1:8090'
+.\.venv\Scripts\python.exe run.py
 ```
 
-`tests/test_fabric.py` 覆盖：端点契约、错误体、租户隔离、资源文件加载与校验、`gpu_id` 稳定性、
-capacity 账本守恒、`held_by` 语义、逻辑时间 `observed_at`、renew 省略 ttl、事件两条式写入。
+打开 **http://localhost:8080**，保持终端运行。不要直接双击 `index.html`。停止时在启动终端按 Ctrl + C；修改前端后可按 Ctrl + F5 刷新，修改后端后需要重启。
 
-## B 侧扩展服务（`ext/`，P0–P9 已完成）
+`run.py` 默认拉起两个服务：A 资源服务（8080）和 B 任务扩展服务（8090）。使用上述命令时，不要再单独运行 `run_ext.py`。
 
-独立进程，只读 A 的冻结 API，不导入 `app` 包、不维护第二份可写账本。
+| 地址 | 用途 |
+| --- | --- |
+| http://localhost:8080 | 当前产品界面 |
+| http://localhost:8080/healthz | 资源服务健康检查 |
+| http://localhost:8090/ext/v1/healthz | 扩展服务及上游连通性检查 |
+| http://localhost:8080/docs | A 侧接口文档 |
+| http://localhost:8090/docs | B 侧接口文档 |
+| http://localhost:8090/ui/ | 独立接口工作台，作为调试补充 |
 
-```bash
-python run.py        # A：8080
-python run_ext.py    # B：8090（另一终端）
+如需更换端口、分别启动或排查连接，请看[本地运行说明](docs/LOCAL_RUN.md)。分别启动时，先设置 `FABRIC_EXT_AUTOSTART=0`，再在配置一致的两个终端分别运行 `run.py` 和 `run_ext.py`。
+
+## 推荐体验路线
+
+**林同学登录 → 查看 GPU 与卡主计划 → 提交实验并分析 → 生成方案与预估 → 核对后申请 → 我的任务 → 主动释放。**
+
+主流程推荐使用公共资源，私有卡审批可作为加演：
+
+| 输入 | 推荐值 |
+| --- | --- |
+| 实验类型 | 模型训练 |
+| GPU | H100，1 张，单卡最低显存约 20 GB |
+| 时长 / 预算 | 30 分钟 / 20 积分 |
+| 分析范围 / 策略 | 公共大厅 / 综合均衡 |
+| 截止时间 | 留空 |
+
+新场景中公共 H100 参考价为 4.8 积分 / 卡时，上述使用估价约 2.4 积分。最终可申请状态以现场方案和提交校验为准。
+
+修改预算为 0 会提示超预算；RTX 4090 配约 80 GB 显存会提示不兼容；任务类型会改变执行拆解，不允许中断会使分析推荐偏向稳定。分析不会自动改写用户输入，也不会占卡。
+
+私有卡流程为：**申请人发起审批 → 切换卡主同意 → 切回申请人确认提交**。预制审核案例用于展示批复状态，不会自动创建现场任务。
+
+## 演示账号与数据
+
+| 主测试账号 | 推荐用途 |
+| --- | --- |
+| 林同学 | 借用与贡献、个人画像、主流程演示 |
+| 周同学 | 私有卡贡献与审批，拥有 bio-ws-01 的 RTX 3090 |
+| 尹同学 | 独立用户与大厅个人 GPU 贡献 |
+| 蔡老师 | 实验室和协作组视角 |
+
+另有其他预制成员，可从登录页选择；左下角账号入口支持切换身份。
+
+默认种子包含 12 台工作站、34 张 GPU、20 个运行任务和 12 个等待任务；初始为 10 张空闲、2 张卡主自用、2 张离线，其余被任务占用。这是全局初始口径：不同身份可见范围不同，现场操作或已发布资源也会改变数字。
+
+| 数据 / 文件 | 作用 |
+| --- | --- |
+| [app/synthetic.py](app/synthetic.py) | 合成资源、用户、任务、历史收益与利用率样本，不读取 Excel |
+| [app/data/demo_seed.json](app/data/demo_seed.json) | 运行时加载的演示种子 |
+| [app/data/experience_plans.json](app/data/experience_plans.json) | 个人项目计划样例 |
+| `.app/demo_intelligence/` | 默认意愿分析、交互审计与审批案例记录 |
+| `.app/demo_contributions/` | 默认用户登记、发布与撤回记录 |
+| [resources.json](resources.json) | 非演示模式或演示种子不可用时的基础资源配置；不是默认的 34 卡场景 |
+
+演示价目为积分 / 卡时：H100 4.8、A100 4.2、RTX 4090 3.2、RTX 3090 1.9。它们用于演示成本和激励，不是市场报价，也不代表真实支付或提现。
+
+场景使用固定逻辑时间锚点，加上进程运行时间与测试时钟偏移。页面日期可能不是今天；租约到期时间也不等于真实实验完成时间。
+
+### 重启与记录保留
+
+- 核心资源任务场景重启后恢复种子；现场任务、租约、B 侧草稿、现场审批与账本主要保存在进程内存中。
+- 意愿分析、交互审计、审批案例处理及用户登记资源写入本地文件；使用同一目录重启后保留，已发布资源会重新加载。
+- 浏览器保存当前所选身份；可在页面切换或退出体验。
+
+需要干净场景时，在启动前指定新的会话目录，无需删除原有数据：
+
+```powershell
+$env:CAMPUS_DEMO_DATA_DIR = Join-Path (Get-Location).Path ('.app\demo-session-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 ```
 
-打开 `http://localhost:8090/ui/` 即产品工作台（纯静态，无需构建）。
+然后运行 `run.py`。再次使用同一路径会保留该会话的文件记录，核心运行任务仍按上述规则重置。
 
-| 变量 | 默认 | 说明 |
-| --- | --- | --- |
-| `FABRIC_BASE_URL` | `http://localhost:8080` | A 的地址 |
-| `FABRIC_TIMEOUT_SECONDS` | `5` | 调 A 的超时 |
-| `EXT_PORT` / `EXT_HOST` | `8090` / `0.0.0.0` | 扩展服务监听 |
-| `LLM_PROVIDER` | `none` | `none` 走确定性解析；`openai_compatible` 启用 LLM |
-| `LLM_BASE_URL` / `LLM_MODEL` | 空 | OpenAI 兼容端点与模型名（两者都填才生效） |
-| `LLM_API_KEY` | 空 | 可选 Bearer token |
-| `LLM_TIMEOUT_SECONDS` | `10` | LLM 调用超时，失败自动回退 |
-| `PROFILES_FILE` | 空 | 历史 Profile JSON；为空则纯启发式估算 |
+## 配置与 API key
 
-端点（全部为真实值，不是假数据）：
+启动脚本会读取项目根目录 `.env`，已有进程环境变量优先。上面的启动命令显式使用本地规则模式，适合稳定演示。
 
-- `GET /ext/v1/healthz`：自身状态 + 上游 A 的 `reachable/status/logical_time/latency_ms`；
-- `GET /ext/v1/version`：扩展版本、契约版本、上游 `api_version`；
-- `GET /ext/v1/overview`：工作台顶部 KPI（含 `demo` / `unit` / `source` / `observed_at`）；
-- `GET /ext/v1/snapshot`：读取 `/v1/capacity` 并归一化为 `ResourceSnapshot`
-  （`available_gpus`、`model_index`、每个节点的 `schedulable/free_gpu_ids`）；
-- `GET /ext/v1/contracts`：`TaskSpec`、`WorkloadEstimate`、`ResourceSnapshot`、`StrategyPlan`、
-  `PlacementDecision`、`Approval` 等契约的 JSON Schema；
-- `POST /ext/v1/tasks/analyze`：自然语言 → `TaskSpec`，同时返回 `context`
-  （`known_models`、`snapshot_observed_at`、`snapshot_error`、`llm`）；
-- `GET /ext/v1/tasks`、`GET /ext/v1/tasks/{task_id}`：任务草稿列表 / 详情；
-- `POST /ext/v1/tasks/{task_id}/confirm`：补全或修正字段，`confirm=true` 时才置为 `confirmed`；
-- `POST /ext/v1/tasks/{task_id}/estimate`：估算资源规格，返回 `estimate` 与
-  可直接提交给确认接口的 `suggested_answers`；
-- `GET /ext/v1/tasks/{task_id}/estimate`：读取该任务最近一次估算结果；
-- `POST /ext/v1/tasks/{task_id}/plan`：基于当前 `/v1/capacity` 生成四策略方案
-  （Economy / Fast / Stable / Balanced），返回 `plan` 与所用 `estimate`；
-- `GET /ext/v1/tasks/{task_id}/plan`：读取该任务最近一次方案；
-- `POST /ext/v1/tasks/{task_id}/decisions`：把选定策略落成 `PlacementDecision`（需 `X-Owner`，201）；
-- `GET /ext/v1/tasks/{task_id}/decisions`、`GET /ext/v1/decisions/{decision_id}`：决策与提交结果；
-- `POST /ext/v1/decisions/{decision_id}/submit`：提交给 A 的 `POST /v1/allocations`，
-  透传 201/202，冲突映射 409；
-- `POST /ext/v1/decisions/{decision_id}/approvals`：发起 Owner 审批（含可选预约窗口），201；
-- `GET /ext/v1/approvals`（按 `owner_id/requester/status/decision_id` 过滤）、
-  `GET /ext/v1/approvals/{approval_id}`：审批列表与详情；
-- `POST /ext/v1/approvals/{approval_id}/decision`：Owner 接受 / 拒绝 / 还价；
-- `POST /ext/v1/approvals/{approval_id}/cancel`：申请人取消待审批；
-- `GET /ext/v1/accounts`、`GET /ext/v1/accounts/{owner}`：信用账户；
-- `POST /ext/v1/contributions`（`X-Owner` + 可选 `Idempotency-Key`）、
-  `GET /ext/v1/contributions`：贡献登记；
-- `POST /ext/v1/decisions/{decision_id}/settle`：按 A 的实际生命周期结算；
-- `GET /ext/v1/billing/records`、`GET /ext/v1/billing/records/{record_id}`：消费明细；
-- `POST /ext/v1/availability/observe`、`GET /ext/v1/availability/forecast`、
-  `GET /ext/v1/availability/observations`、`POST /ext/v1/availability/reset`：可用性观测与预测。
+| 变量 | 默认 / 用途 |
+| --- | --- |
+| `FABRIC_DEMO` | 启动脚本默认设为 1，加载演示场景 |
+| `PORT` / `HOST` | A 服务端口 / 监听地址，默认 8080 / 0.0.0.0 |
+| `EXT_PORT` / `EXT_HOST` | B 服务端口 / 监听地址，默认 8090 / 0.0.0.0 |
+| `FABRIC_EXT_AUTOSTART` | 默认 1，随 run.py 启动 B；分别启动时设为 0 |
+| `FABRIC_BASE_URL` | B 访问 A 的地址；启动器未发现已有配置时按 PORT 设置 |
+| `EXT_BASE_URL` | A 转发扩展请求的地址；未设置时按 EXT_PORT 生成 |
+| `CAMPUS_DEMO_DATA_DIR` | 演示文件存储位置；未设置时使用项目 `.app/` 下的默认目录 |
+| `RELOAD` | A 开发热重载，默认关闭；PowerShell 中设为 1 后启动 |
+| `TEST_KEY` | `/_test/*` 控制接口的密钥，默认 campus-test-key；与模型 key 无关 |
+| `RESOURCES_FILE` | 基础资源文件路径，默认 resources.json；演示种子优先 |
+| `LLM_PROVIDER` | 默认 none；可选 openai_compatible 或 qwen 等适配模式 |
+| `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY` | 可选模型服务地址、模型名和密钥，填写到根目录 .env |
+| `LLM_TIMEOUT_SECONDS` | 可选模型调用超时，默认 10 秒；不可用时回退规则 |
+| `PROFILES_FILE` | B 侧估算器可选历史 Profile JSON；未设置时使用启发式估算 |
 
-`observed_at` 透传 A 的逻辑时间；`fetched_at` 是 B 的墙钟时间，两者不可混用。
-上游失败统一返回 502，错误体与 A 一致：`{error, detail, request_id}`。
-数据契约在 [ext/schemas.py](ext/schemas.py)，版本 `1.5.0`；测试 [tests/test_ext.py](tests/test_ext.py)
-用 `httpx.MockTransport` 模拟 A，不依赖 8080 进程。
+**当前产品提交页的模拟分析不需要真实 API key。** 模拟分析与可选模型接入是两条路径；配置真实模型不会把本次提交页的模拟分析自动变成真实调用。模型适配可用于 B 侧任务解析等可选路径，配置或环境变量修改后需重启。
 
-### Task Analyzer（P1）
+密钥只放本机 `.env` 或环境变量，不写进 README、前端代码或示例文件。`.env` 已在 `.gitignore` 中排除。
 
-解析顺序固定为：**确定性规则 > LLM 补全 > 策略默认值**。
+## 项目结构与服务关系
 
-- 规则解析：任务类型、GPU 型号/张数、显存、CPU/内存/存储、时长、截止时间（`本周三` / `下周三` /
-  `11月20日` / `3天内`）、预算、可中断/断点/紧急程度；命中项在 `provenance` 里标为
-  `user_explicit`。
-- LLM 只补缺失字段，置信度上限 0.75 并标 `inferred`；`gpu_models` 必须出现在
-  `/v1/capacity` 的候选型号里，否则丢弃；过去的 `deadline` 丢弃；LLM 超时/报错自动回退。
-- 缺失关键信息生成 `missing` 追问：任务类型未知、训练类任务没有 GPU 张数为 `blocking`；
-  时长/型号为 `recommended`；预算/截止为 `optional`。
-- `status` 取值：`draft`（任务类型未知）、`needs_confirmation`（含推断或待补全）、
-  `confirmed`（仅确认接口可写入）。
-- 确认接口支持 `gpu_count`、`gpu_models`、`duration_seconds`、`deadline`、`max_cost`、
-  `interruptible` 等字段；仍有 `blocking` 缺项时返回 400 `blocking_fields_missing`，
-  非法值返回 400 `invalid_answer`。
-
-### Workload Estimator（P2）
-
-- 输入 `TaskSpec`，输出 `WorkloadEstimate`；**不回写 TaskSpec**，估算结果单独保存。
-- 显存经验值（GiB / 每 B 参数）：全量训练 16、全量微调 16、LoRA 3、QLoRA 1.5、推理 2；
-  未识别参数量时按任务类型默认值（训练 40、微调 24、推理 16、数据处理 8）。
-- GPU 张数 = ceil(显存需求 / 参考单卡显存)，参考：训练类 80、推理/Notebook 24、仿真 48，
-  上限 16；推荐的 GPU 型号只表示需求档位，不代表集群当前有卡。
-- CPU / 内存 / 存储 / 时长按任务类型与数据规模推导；用户已给出的字段一律保留。
-- `PROFILES_FILE` 提供历史 Profile 时，按 `task_type` 与参数量级（0.5x~2x）匹配，
-  时长与张数取中位数后与启发式平均，`basis=history`、`sample_size=匹配条数`。
-- `confidence` 由信息完整度累加（任务类型 / 参数量 / 数据量 / 时长 / 张数 / 历史），
-  任务类型未知时上限 0.4。
-- `suggested_answers` 可直接提交给确认接口，串起“估算 → 确认 → 已确认”的闭环。
-
-### Matcher 与四策略（P3）
-
-- 硬约束（不满足即不可放置）：节点 `Ready`；同一节点上空闲 GPU 数量够；
-  型号在需求集合内；单卡显存 >= 下限；节点标签包含全部偏好；节点 CPU/内存/存储容量足够。
-  A 的 capacity 不暴露 CPU/内存已用量，因此这里是容量级校验。
-- GPU 选择：Economy 选价目最低且能装下的卡；其余策略选算力最高的卡。
-- 指标：`expected_cost`（静态价目 × 张数 × 时长）、`stability`、`interruption_risk`、
-  `fit_score`（显存贴合度）；全部来自当前快照，不预测未来。
-- 策略取向：
-  - `economy`：成本最低；
-  - `fast`：算力分最高、可立即绑定；
-  - `stable`：稳定性最高（空闲率高、非贡献节点优先）；
-  - `balanced`：成本 / 稳定性 / 匹配度 / 算力的加权和，默认推荐。
-- 没有可行节点时四个选项都 `feasible=false`、`placement=null`，`plan.notes` 给出阻塞原因；
-  绝不在不可行时假装分配成功。
-- 演示价目（CNY/GPU·小时）：H100 12、MI300 8、A100 6、L40S 5、A10 3、RTX 4090 2.5、
-  V100 2、RTX 3090 1.8，未知型号 4。P6 权益模块会复用并校准。
-
-### PlacementDecision 与提交（P4）
-
-- 决策归属：创建决策时必须带 `X-Owner`，并写入 `allocation.owner`；提交时用存储的 owner，
-  若请求头与决策 owner 不一致返回 403 `owner_mismatch`。
-- 请求体映射：GPU 张数取方案建议；型号在所选 GPU 型号一致时传具体型号，否则传 `any`；
-  显存下限、CPU/内存/存储取 TaskSpec 优先、估算补空；标签取 `preferred_labels`。
-- `preemption_policy.mode` 由中断要求推导：不可中断 → `non_preemptible`；
-  可中断且支持 checkpoint → `checkpoint`；否则 `restartable`。
-- `gpu_ids` / `node_id` 只是建议值，冻结 API 无法按 gpu_id 绑定，权威结果以 A 返回的
-  `placement` 为准；`ttl_seconds` 上限 3600，更长任务需 renew。
-- 幂等：默认用 `decision_id` 作为 `Idempotency-Key`，可在提交体覆盖；同一决策重试不会换 key。
-- 状态透传：A 201 → 201 已绑定；A 202 → 202 排队；A 409 → 409 `allocation_conflict`；
-  A 429 → 429 `rate_limited`；其余上游错误 → 502。提交结果（含失败）都会保存在决策上。
-- `requires_approval=true` 的决策在 `approval_id` 为空时提交返回 409 `approval_required`，
-  审批流程见下节 P5。
-
-### Owner 审批与预约（P5）
-
-- 审批是产品层授权记录，**不占用 A 的 GPU**；冻结 API 没有预留容量接口，预约窗口
-  只约束“何时可以提交”，最终绑定仍由 A 原子完成。
-- 流程：申请人（决策 owner）创建审批 → Owner（`X-Owner` 必须等于 `owner_id`）
-  接受 / 拒绝 / 还价 → 接受后 `approval_id` 写回决策 → 提交时校验。
-- 一个决策同时最多一个 `pending` 审批；重复创建返回 409 `approval_exists`。
-- 窗口用 UTC ISO-8601，必须成对出现、`end > start` 且未过期；否则 400 `invalid_approval`。
-- 提交校验：无审批 → 409 `approval_required`；非 accepted → 409 `approval_not_accepted`；
-  accepted 但当前时间不在窗口内 → 409 `outside_reservation_window`。
-- 拒绝/还价不会写回 `approval_id`，因此仍无法提交；申请人可取消 `pending`。
-- 注意：审批状态里的 `expired` 目前不会被自动推进（B 没有后台定时器），需要时由调用方
-  显式处理或重新发起。
-
-### 贡献、使用与信用结算（P6）
-
-- 贡献：`credit = 单价 × 张数 × 小时 × 1.2`；`Idempotency-Key` 作用域 `(owner, key)`，
-  重复提交返回首次记录（200），不会重复入账。
-- 使用：`cost = 单价 × 实际张数 × 实际小时`，张数取 A 的 `placement.gpu_ids`，
-  型号按 `/v1/capacity` 的 `gpu_id → model` 反查。
-- 结算时间：优先取 A 的终态事件（`allocation.released/expired/evicted`）；
-  A 尚未产生事件时退回 `capacity.observed_at`。**绝不用 B 的墙钟去减 A 的 `bound_at`**，
-  否则两套时间轴会把时长算成 0。
-- 只结算终态 allocation（Released / Expired / Evicted）；未终态返回 409
-  `allocation_not_terminal`，未成功提交返回 409 `allocation_not_submitted`。
-- 结算按决策幂等：同一决策只有一条 `BillingRecord`，重复调用返回 200 与首次结果。
-- 账户：`balance = contributed - consumed`，允许为负；同时累计贡献/消费的 GPU 小时。
-- 局限：贡献目前是**自报登记**（B 无法从冻结 API 得知节点归属），报告里必须注明。
-
-### 可用性预测（P7）
-
-- 只使用 B 能看到的信息：`/v1/capacity` 快照序列中的 `state`、`contributed`、GPU `held_by`，
-  不读取 A 的未来调度，也不猜测 Owner 行为。
-- 观测按 A 的逻辑时间 `observed_at` 去重：同一逻辑时刻重复拉取只覆盖最后一条，不会刷高样本量。
-- `availability_score`：空闲率、是否 Ready、趋势、是否贡献节点的加权；NotReady 上限 0.15。
-- `interruption_risk`：基础 0.1 + 占用率 + 贡献节点 0.2 + NotReady 0.25（且下限 0.65）+ 下降趋势 0.1。
-- `expected_free_gpus`：当前空闲 + 近 4 次趋势外推，按 horizon 截断；NotReady 直接为 0。
-- `confidence`：样本数 1 → 0.4，随样本增加最高 0.9；`reasons` 写明依据。
-- 接入策略：`build_plan` 收到预测时按 `0.5 × 预测风险 + 0.5 × 静态规则` 修正
-  `interruption_risk`，样本不足也不会让预测完全接管。
-- `POST /tasks/{id}/plan` 的响应新增 `forecasts`，与方案同源同时刻。
-
-### 前端工作台（P8）
-
-- 地址：`http://localhost:8090/ui/`，由 `ext/static/` 直接托管，无构建步骤。
-- 流程：描述任务 → 分析/估算 → 四策略方案对比（含预测） → 创建决策 →
-  提交给 A →（可选）Owner 审批 → 贡献/结算。
-- 侧栏：集群容量（GPU 空闲/已分配/贡献者）、待审批列表、信用账户与消费明细。
-- Owner 身份从右上角输入，存 `localStorage`；审批按钮以该审批的 Owner 身份执行，
-  这是单机演示的简化，不是真实鉴权。
-- 所有写操作都走已实现的 `ext` 接口，前端不直接访问 A，也不存第二份账本。
-- 验证：`tests/test_ext_ui.py` 检查页面与静态资源；浏览器实测“分析 → 生成方案”
-  可看到四张策略卡片与 3 个节点。
-
-### 测试客户端与场景回放（`tools/`）
-
-```bash
-python -m tools.run_scenarios --list
-python -m tools.run_scenarios --verbose
-python -m tools.run_scenarios --scenario basic_lifecycle --scenario owner_isolation
-python -m tools.run_scenarios --json-out reports/scenarios.json
+```text
+浏览器（8080，app/static/）
+  ├─ /api/*           产品聚合、模拟分析、画像、资源登记
+  ├─ /v1/*            A：容量、租约、任务、事件
+  └─ /ext/* ───────── B（8090）：解析、估算、方案、决策、审批
+                         └─ 通过 A 的 API 读取容量并提交资源申请
 ```
 
-- [tools/fabric_client.py](tools/fabric_client.py)：A/B 两端测试客户端，4xx 不抛异常，
-  便于断言错误语义；A 写操作带 `X-Owner`，`/_test/*` 带 `X-Test-Key`。
-- [tools/invariants.py](tools/invariants.py)：容量守恒、GPU 归属、生命周期、所有权四类不变量。
-- [tools/scenarios.py](tools/scenarios.py)：8 个场景（生命周期、幂等、隔离、排队不超卖、
-  混合负载、NotReady 驱逐、抢占契约、扩展财务闭环），每个场景自带复位、清理与不变量断言。
-- 运行器会等待 A 与扩展服务就绪；A 未实现的端点返回 404 时记为 `skipped`，有失败时退出码 1。
-- 当前真机结果：`8 passed, 0 failed, 0 skipped`。原先的三项失败已补齐：
-  幂等键 `(owner, key)` 同体重放/异体 409（A 第 3 步）、NotReady 驱逐占用态（A 第 7 步）、
-  抢占到通知截止时归还 GPU 并写 `checkpoint.timeout` / `allocation.preempted` /
-  `gpu.returned_to_pool`（A 第 6 步）。三项均有 `tests/test_fabric.py` 回归用例。
-  结果保存在 `reports/scenarios.json`。
+资源绑定与占用由 A 维护。B 根据快照生成方案，通过 A 的接口执行申请，并维护自己的任务草稿、决策、审批和结算记录。
 
-### 四策略配对实验（P9）
+| 目录 / 文件 | 内容 |
+| --- | --- |
+| [app/](app/) | A 资源服务与产品演示接口 |
+| [app/static/index.html](app/static/index.html) | 当前页面入口，使用 workspace.css / workspace.js |
+| [ext/](ext/) | B 任务扩展、四策略、审批和结算服务，附独立调试工作台 |
+| [api/openapi.yaml](api/openapi.yaml) | 核心资源 API 契约，不包含所有产品演示接口 |
+| [api/challenge.md](api/challenge.md) | 赛题与接口背景 |
+| [tools/](tools/) | 合成种子生成器、测试客户端、场景回放与策略实验 |
+| [tests/](tests/) | 核心、产品接口与扩展服务测试 |
+| [docs/](docs/) | 当前本地运行说明和演示讲稿 |
+| [reports/](reports/) | 历史审计、场景和实验报告；结论与数字需结合对应版本理解 |
 
-```bash
-python -m tools.run_experiment
-python -m tools.run_experiment --seed 7 --tasks 6 --strategies economy,fast
+### 主要接口
+
+| 范围 | 示例 |
+| --- | --- |
+| 资源与任务 | `/v1/capacity`、`/v1/allocations`、`/v1/jobs`、`/v1/events`、`/v1/metrics` |
+| 生命周期操作 | allocation 的 renew、checkpoint、resume，以及任务 / 租约的释放操作 |
+| 产品展示 | `/api/dashboard`、`/api/demo/accounts`、`/api/demo/profile`、`/api/demo/nodes/{node_id}` |
+| 模拟分析与预测 | `/api/demo/intelligence/intent`、`/api/demo/preview` |
+| 资源登记发布 | `/api/demo/contributions`、`/import`，及具体记录的 publish / withdraw 操作 |
+| 扩展任务流程 | `/ext/v1/tasks/analyze`，以及任务的 confirm、estimate、plan、decisions |
+| 扩展审批与结算 | `/ext/v1/approvals`、`/ext/v1/decisions/{decision_id}/submit`、settle 及 billing 接口 |
+| 演示控制 | `/_test/reset`、`/_test/clock`、`/_test/contributor-demand`、`/_test/node-state`、`/_test/fault` |
+
+核心用户操作使用 `X-Owner` 标识归属，测试控制使用 `X-Test-Key`。创建 allocation 的 `Idempotency-Key` 按 owner 隔离，同体重放返回首次结果，复用同一 key 提交不同内容会冲突。演示身份头不能替代生产鉴权。
+
+部分产品接口使用 `include_in_schema=False`，不会出现在 `/docs`，可在 `app/presentation.py`、`app/experience.py`、`app/intelligence.py` 和 `app/contributions.py` 查看定义。
+
+## 验证与开发工具
+
+单元与接口测试：
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
 ```
 
-- 同一 seed 生成同一顺序的负载；每个策略前 `/_test/reset`，任务之间不释放 GPU 制造争用，
-  结束后统一释放并跑不变量检查。
-- 指标为**计划口径**：估算成本、平均风险、平均稳定性、绑定/排队/冲突/不可行、瞬时利用率。
-- 产出 `reports/experiment.md` 与 `reports/experiment.json`；相对最低成本策略给出配对差异。
-- 首轮（seed 2026，6 个任务）：economy / stable / balanced 均为 ¥20.50、风险 0.335；
-  fast 为 ¥22.00、风险 0.369；四策略均 4 绑定、2 不可行、0 不变量问题。
-- 发现：Workload Estimator 会按显存推荐**单一型号**（≤24GB 只给 RTX 4090），
-  导致三个策略被锁在同一型号上、无法体现节点层面的差异；后续可改成只给显存下限、
-  不锁型号，再复跑配对实验。
-- A 的 `PLACEMENT=first_fit|risk_aware` 需要重启进程切换，本实验只比较 B 的四个策略。
+覆盖核心资源生命周期、幂等与归属、节点异常与抢占测试控制、任务解析与估算、四策略、审批与结算、产品视图、模拟分析、资源登记发布等。通过数量以本次执行结果为准。
+
+工具还提供场景回放与配对实验：
+
+```powershell
+.\.venv\Scripts\python.exe -m tools.run_scenarios --list
+.\.venv\Scripts\python.exe -m tools.run_scenarios --verbose
+.\.venv\Scripts\python.exe -m tools.run_experiment
+```
+
+场景回放和实验需要已启动的服务，会复位资源并产生测试任务；请在专用测试实例上执行。历史报告中的通过数、价格和策略差异不是当前场景的固定结果。
+
+## 当前边界与后续工作
+
+- **真实计算接入：**未接入真实 GPU 节点 Agent、硬件探测或训练执行；3D 卡片与任务状态对应模拟资源。
+- **预测与曲线：**卡主曲线来自预制计划，画像与概率是演示统计基线；开始 / 结束时间属于条件估计，未完整计入续租、新竞争和审批耗时，不构成预约。
+- **自动调度：**尚未实现完整 Pending 自动派发、TTL / queue timeout 自动到期，以及任务自然结束；演示中主动申请并手动释放。
+- **共享治理：**已实现演示身份下的资源可见规则和私有卡审批流程；自助小组创建、邀请、成员管理及完整分层匹配仍需完善。
+- **生命周期：**已有规格约束、幂等、节点 NotReady 驱逐和测试时钟推进抢占通知到期等行为；完整自动回收、迁移和恢复闭环仍需继续建设。
+- **收益：**页面近 30 日收支来自合成历史，不随现场任务自动更新；B 侧另有结算接口，尚未形成真实支付或提现体系。
+- **部署：**默认以两个本地进程和文件 / 内存保存状态，无生产认证、数据库持久化与高可用部署。
+
+项目当前重点是验证校园算力互助的产品流程、资源归属、需求约束、方案解释和授权协作。完整演示方式见[现场讲稿](docs/DEMO_SCRIPT.md)。

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from fastapi import Header, Query
 from app import demo
+from app.access_scope import node_access
 
 PLAN_FILE = Path(__file__).parent / "data" / "experience_plans.json"
 FEATURED = [
@@ -116,10 +117,14 @@ def install_experience(app, state, api_error, iso, parse_iso):
                 "history_source": "内置模拟 个人演示记录；任务分布和近7日曲线仅统计已有任务样本。"}
 
     @app.get("/api/demo/nodes/{node_id}", include_in_schema=False)
-    def node_detail(node_id: str, gpu_id: str | None = None, horizon: int = Query(default=24, ge=6, le=72)):
+    def node_detail(node_id: str, gpu_id: str | None = None, horizon: int = Query(default=24, ge=6, le=72),
+                    x_owner: str = Header(default="u-20260309")):
         data, p = context()
         node = state.node(node_id)
         if node is None:
+            raise api_error(404, "node_not_found", node_id)
+        access = node_access(x_owner, node, p)
+        if not access["visible"]:
             raise api_error(404, "node_not_found", node_id)
         if gpu_id and not any(g["gpu_id"] == gpu_id for g in node["gpus"]):
             raise api_error(404, "gpu_not_found", gpu_id)
@@ -178,9 +183,13 @@ def install_experience(app, state, api_error, iso, parse_iso):
         revenue = next((r for r in p.get("revenue_by_node", []) if r["node_id"] == node_id), {})
         return {"node": {**node_summary(node), "labels": labels, "gpus": node["gpus"],
                          "cpu_millicores": node["cpu_millicores"], "memory_mib": node["memory_mib"],
-                         "ephemeral_storage_mib": node["ephemeral_storage_mib"]},
+                         "ephemeral_storage_mib": node["ephemeral_storage_mib"],
+                         "access_scope": access["scope"], "access_label": access["label"],
+                         "visible_reason": access["reason"]},
                 "selected_gpu_id": gpu_id, "owner": owner, "owner_display": (owner or {}).get("name") or labels.get("lab") or "公共中心",
-                "observed_at": iso(now), "project": project_plan(owner_id, now) if owner_id else None,
+                "observed_at": iso(now),
+                "project": project_plan(owner_id, now) if owner_id and labels.get("user_declared") != "true" else None,
                 "tasks": tasks, "availability": availability, "revenue": revenue,
                 "availability_source": "声明共享时段 + 当前占用与租约的条件推算；未计续租、审批和新增任务，不构成预约。",
-                "revenue_source": "内置模拟 节点级近30日演示汇总，不是单卡实时收益。"}
+                "revenue_source": ("用户登记资源没有历史收益数据。" if labels.get("user_declared") == "true"
+                                   else "内置模拟 节点级近30日演示汇总，不是单卡实时收益。")}
